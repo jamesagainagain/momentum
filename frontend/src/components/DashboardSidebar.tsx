@@ -24,7 +24,7 @@ export function DashboardSidebar() {
   return (
     <aside
       className={cn(
-        "flex flex-col border-r border-border bg-sidebar transition-all duration-200",
+        "flex flex-col border-r border-border glass-panel transition-all duration-200",
         collapsed ? "w-[56px]" : "w-[200px]"
       )}
     >

@@ -14,9 +14,9 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ["DM Sans", "system-ui", "sans-serif"],
+        sans: ["Lora", "Georgia", "serif"],
         mono: ["JetBrains Mono", "monospace"],
-        display: ["Instrument Serif", "Georgia", "serif"],
+        display: ["Poppins", "system-ui", "sans-serif"],
       },
       colors: {
         border: "hsl(var(--border))",

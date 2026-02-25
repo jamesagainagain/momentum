@@ -34,7 +34,7 @@ export function TopBar({
   };
 
   return (
-    <header className="flex h-14 items-center justify-between border-b border-border px-8 bg-background">
+    <header className="flex h-14 items-center justify-between border-b border-border px-8 glass-panel">
       <h1 className="text-[11px] font-medium text-muted-foreground uppercase tracking-[0.12em]">{title}</h1>
 
       <div className="flex items-center gap-3">

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import {
   Send, ArrowUpRight, ArrowDownRight, Minus, Clock, TrendingUp,
   BarChart3, AlertTriangle, Loader2, ChevronDown, ChevronUp,
@@ -8,6 +8,7 @@ import {
   ResponsiveContainer, Cell, ReferenceLine,
 } from "recharts";
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { LiquidGlassCanvas } from "@/components/LiquidGlassCanvas";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { predictEvent, chatAnalysis, type PredictionResponse } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -321,6 +322,36 @@ function PredictionCard({ entry, index }: { entry: ChatEntry; index: number }) {
 
 /* ── Page ──────────────────────────────────────────── */
 
+function HeroGlassBackground() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ width: 0, height: 360 });
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const { width, height } = entries[0]?.contentRect ?? { width: 0, height: 360 };
+      setSize({ width: Math.round(width), height: Math.round(height) });
+    });
+    ro.observe(el);
+    setSize({ width: el.clientWidth, height: el.clientHeight });
+    return () => ro.disconnect();
+  }, []);
+
+  return (
+    <div ref={ref} className="absolute inset-0">
+      {size.width > 0 && (
+        <LiquidGlassCanvas
+          width={size.width}
+          height={size.height}
+          className="absolute inset-0 w-full h-full"
+          interactive
+        />
+      )}
+    </div>
+  );
+}
+
 const EXAMPLES = [
   "Google launches new Gemini robotics model",
   "Fed announces surprise rate hike",
@@ -391,23 +422,28 @@ const NewsChatPage = () => {
       <div className="flex flex-col min-h-[calc(100vh-3.5rem)] max-w-3xl mx-auto">
         <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin px-1">
           {history.length === 0 && !loading && (
-            <div className="pt-16 pb-12">
-              <h1 className="font-display text-4xl font-normal text-foreground tracking-tight">
-                What happens next?
-              </h1>
-              <p className="mt-4 text-[15px] text-muted-foreground leading-relaxed max-w-lg">
-                Enter a news event or headline. We predict how it will move social and topic trends — and explain why.
-              </p>
-              <div className="mt-10 flex flex-wrap gap-2">
-                {EXAMPLES.map((ex) => (
-                  <button
-                    key={ex}
-                    onClick={() => setInput(ex)}
-                    className="px-4 py-2.5 rounded-xl border border-border text-[12px] text-muted-foreground hover:text-foreground hover:bg-accent/50 hover:border-foreground/20 transition-all"
-                  >
-                    {ex}
-                  </button>
-                ))}
+            <div className="pt-8 pb-12">
+              <div className="relative w-full h-[360px] rounded-2xl overflow-hidden">
+                <HeroGlassBackground />
+                <div className="absolute inset-0 z-10 flex flex-col justify-center px-10">
+                  <h1 className="font-display text-4xl font-normal text-foreground tracking-tight">
+                    What happens next?
+                  </h1>
+                  <p className="mt-4 text-[15px] text-muted-foreground leading-relaxed max-w-lg">
+                    Enter a news event or headline. We predict how it will move social and topic trends — and explain why.
+                  </p>
+                  <div className="mt-10 flex flex-wrap gap-2">
+                    {EXAMPLES.map((ex) => (
+                      <button
+                        key={ex}
+                        onClick={() => setInput(ex)}
+                        className="px-4 py-2.5 rounded-xl border border-border text-[12px] text-muted-foreground hover:text-foreground hover:bg-accent/50 hover:border-foreground/20 transition-all"
+                      >
+                        {ex}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           )}
