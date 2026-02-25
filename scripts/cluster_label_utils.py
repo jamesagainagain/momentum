@@ -8,9 +8,14 @@ _VOWELS = set("aeiou")
 _HEX_RE = re.compile(r"^[0-9a-f]{8,}$")
 _MIXED_DIGIT_START = re.compile(r"^\d[a-z0-9]{7,}$")
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
+_URL_SCHEMES = {"http", "https", "ftp", "www"}
+_PURE_NUMBER_RE = re.compile(r"^\d+$")
 
 
 def _is_noise_token(token: str) -> bool:
+    # URL schemes and bare numbers are never useful labels
+    if token in _URL_SCHEMES or _PURE_NUMBER_RE.match(token):
+        return True
     if len(token) < 8:
         return False
     if _HEX_RE.match(token):
