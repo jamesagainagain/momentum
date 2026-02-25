@@ -104,7 +104,6 @@ def model_candidates(model_names, random_state):
             max_depth=8,
             learning_rate=0.05,
             max_iter=400,
-            n_jobs=-1,
             random_state=random_state,
         )
     if "xgboost" in names or "xgb" in names:
