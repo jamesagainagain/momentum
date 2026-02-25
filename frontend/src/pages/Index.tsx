@@ -7,7 +7,7 @@ import { KPICards } from "@/components/KPICards";
 import { EventTimeline } from "@/components/EventTimeline";
 import { ClusterDetailPanel } from "@/components/ClusterDetailPanel";
 import {
-  fetchClusters, fetchSnapshots, fetchLifecycleDistribution, fetchTemporalEvents,
+  fetchClusters, fetchSnapshots, fetchWeeklySnapshots, fetchLifecycleDistribution, fetchTemporalEvents,
   type ClusterInfo, type Snapshot, type LifecycleItem, type TemporalEvent,
 } from "@/lib/api";
 import {
@@ -40,6 +40,8 @@ const Index = () => {
   const [selectedCluster, setSelectedCluster] = useState<Cluster | null>(null);
   const [selectedMetric, setSelectedMetric] = useState<Metric>("post_count");
   const [selectedClusterIds, setSelectedClusterIds] = useState<string[]>([]);
+  const [granularity, setGranularity] = useState<"monthly" | "weekly">("monthly");
+  const [weeklySnapshots, setWeeklySnapshots] = useState<Snapshot[]>([]);
 
   const [clusters, setClusters] = useState<ClusterInfo[]>([]);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
@@ -51,6 +53,7 @@ const Index = () => {
     Promise.all([
       fetchClusters().then((r) => setClusters(r.clusters)).catch(() => {}),
       fetchSnapshots().then(setSnapshots).catch(() => {}),
+      fetchWeeklySnapshots().then(setWeeklySnapshots).catch(() => {}),
       fetchLifecycleDistribution().then(setLifecycleDist).catch(() => {}),
       fetchTemporalEvents().then(setEvents).catch(() => {}),
     ]).finally(() => setLoaded(true));
@@ -66,23 +69,52 @@ const Index = () => {
     const seen = new Set<string>();
     return displaySnapshots
       .filter((s) => { if (seen.has(s.cluster_id)) return false; seen.add(s.cluster_id); return true; })
-      .map((s) => ({ id: s.cluster_id, label: s.cluster_label }));
+      .map((s) => ({ id: s.cluster_id, label: s.cluster_label, theme_name: s.theme_name || "" }));
   }, [displaySnapshots]);
 
+  const weeklyClusterIds = useMemo(
+    () => new Set(weeklySnapshots.map((s) => s.cluster_id)),
+    [weeklySnapshots]
+  );
+  const hasWeeklyData = weeklySnapshots.length > 0;
+
+  const activeClusterOptions = useMemo(() => {
+    if (granularity === "weekly" && hasWeeklyData) {
+      return clusterOptions.filter((c) => weeklyClusterIds.has(c.id));
+    }
+    return clusterOptions;
+  }, [clusterOptions, granularity, hasWeeklyData, weeklyClusterIds]);
+
+  const activeSnapshots = granularity === "weekly" && hasWeeklyData
+    ? weeklySnapshots
+    : displaySnapshots;
+
+  useEffect(() => {
+    if (selectedClusterIds.length > 0) {
+      const validIds = new Set(activeClusterOptions.map((c) => c.id));
+      const stillValid = selectedClusterIds.filter((id) => validIds.has(id));
+      if (stillValid.length !== selectedClusterIds.length) {
+        setSelectedClusterIds(stillValid);
+      }
+    }
+  }, [granularity]);
+
   const trendData = useMemo(() => {
-    const ids = selectedClusterIds.length ? selectedClusterIds : clusterOptions.slice(0, 3).map((c) => c.id);
-    const timeWindows = [...new Set(displaySnapshots.map((s) => s.time_window))].sort();
+    const ids = selectedClusterIds.length ? selectedClusterIds : activeClusterOptions.slice(0, 3).map((c) => c.id);
+    const timeWindows = [...new Set(activeSnapshots.map((s) => s.time_window))].sort();
     return timeWindows.map((tw) => {
-      const row: Record<string, string | number> = { time_window: tw.slice(0, 7) };
+      const row: Record<string, string | number> = {
+        time_window: granularity === "weekly" ? tw.slice(0, 10) : tw.slice(0, 7),
+      };
       ids.forEach((id) => {
-        const snap = displaySnapshots.find((s) => s.cluster_id === id && s.time_window === tw);
+        const snap = activeSnapshots.find((s) => s.cluster_id === id && s.time_window === tw);
         if (snap) row[id] = snap[selectedMetric] ?? 0;
       });
       return row;
     });
-  }, [selectedClusterIds, selectedMetric, clusterOptions, displaySnapshots]);
+  }, [selectedClusterIds, selectedMetric, activeClusterOptions, activeSnapshots, granularity]);
 
-  const activeClusterIds = selectedClusterIds.length ? selectedClusterIds : clusterOptions.slice(0, 3).map((c) => c.id);
+  const activeClusterIds = selectedClusterIds.length ? selectedClusterIds : activeClusterOptions.slice(0, 3).map((c) => c.id);
   const lineColors = ["hsl(210, 30%, 48%)", "hsl(152, 28%, 40%)", "hsl(255, 18%, 50%)"];
 
   const topAnomalous = [...displayClusters]
@@ -106,11 +138,39 @@ const Index = () => {
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="text-[11px] font-semibold text-foreground uppercase tracking-[0.1em]">Monthly Trends</h3>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                Cluster metrics over time{useRealData ? " (live)" : ""}
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                {granularity === "weekly"
+                  ? `Weekly · last 12 months · ${weeklyClusterIds.size} dense cluster${weeklyClusterIds.size !== 1 ? "s" : ""}`
+                  : `Monthly · full history`}
               </p>
             </div>
             <div className="flex items-center gap-2">
+              {hasWeeklyData && (
+                <div className="flex items-center gap-1 rounded border border-border p-0.5">
+                  <button
+                    onClick={() => setGranularity("monthly")}
+                    className={cn(
+                      "rounded px-2.5 py-1 text-[10px] font-medium transition-colors",
+                      granularity === "monthly"
+                        ? "bg-foreground text-background"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    Monthly
+                  </button>
+                  <button
+                    onClick={() => setGranularity("weekly")}
+                    className={cn(
+                      "rounded px-2.5 py-1 text-[10px] font-medium transition-colors",
+                      granularity === "weekly"
+                        ? "bg-foreground text-background"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    Weekly (recent)
+                  </button>
+                </div>
+              )}
               {metricOptions.map((m) => (
                 <button
                   key={m}
@@ -129,7 +189,7 @@ const Index = () => {
           </div>
 
           <div className="flex flex-wrap gap-1.5 mb-5">
-            {clusterOptions.map((c) => (
+            {activeClusterOptions.map((c) => (
               <button
                 key={c.id}
                 onClick={() => toggleCluster(c.id)}
@@ -140,7 +200,7 @@ const Index = () => {
                     : "text-muted-foreground border-border hover:text-foreground"
                 )}
               >
-                {c.label}
+                {c.theme_name || c.label}
               </button>
             ))}
           </div>
@@ -155,7 +215,7 @@ const Index = () => {
                   key={id}
                   type="monotone"
                   dataKey={id}
-                  name={clusterOptions.find((c) => c.id === id)?.label || id}
+                  name={activeClusterOptions.find((c) => c.id === id)?.theme_name || activeClusterOptions.find((c) => c.id === id)?.label || id}
                   stroke={lineColors[i % lineColors.length]}
                   strokeWidth={1.5}
                   fill={lineColors[i % lineColors.length]}
