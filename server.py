@@ -196,7 +196,7 @@ def _infer_with_trained_model(prediction, bundle):
     # we leave it at 0.0 (no delta available). The model was trained on diffs,
     # so 0.0 = "no change" which is the safest single-snapshot assumption.
 
-    X = pd.DataFrame([x], columns=feature_cols).fillna(0.0)
+    X = pd.DataFrame([x], columns=feature_cols).replace([np.inf, -np.inf], np.nan).fillna(0.0)
     if "stacking_meta_learner" in bundle and "ensemble_members" in bundle:
         meta_learner = bundle["stacking_meta_learner"]
         stacking_meta_cols = bundle.get("stacking_meta_cols", [])

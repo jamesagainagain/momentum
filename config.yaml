@@ -45,6 +45,15 @@ output:
   cluster_trend_snapshots_1w_recent_csv: "output/cluster_trend_snapshots_1W_recent.csv"
   viz_dir: "output/visualizations"
 
+cluster_labeling:
+  domain_stop_words: ["deepmind", "google", "ai", "machine", "learning", "rt", "new", "artificialintelligence", "deeplearning", "machinelearning", "datascience", "tech", "technology"]
+  ctfidf_max_features: 5000
+  ctfidf_top_terms: 8
+  llm_batch_size: 10
+  representative_docs: 5
+  merge_enabled: false
+  merge_similarity_threshold: 0.85
+
 llm:
   enabled: true
   provider: "google"
