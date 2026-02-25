@@ -111,13 +111,16 @@ def _weighted_profile_features(activated_themes):
         "momentum": float(sum(a["weight"] * a.get("recent_momentum", 0.0) for a in activated_themes)),
         "volume_pct_change_lag1": float(sum(a["weight"] * a.get("recent_growth_lag1", 0.0) for a in activated_themes)),
         "volume_pct_change_lag2": float(sum(a["weight"] * a.get("recent_growth_lag2", 0.0) for a in activated_themes)),
-        "volume_pct_change_lag3": float(sum(a["weight"] * a.get("recent_growth_lag2", 0.0) for a in activated_themes)),
-        "volume_pct_change_lag4": float(sum(a["weight"] * a.get("recent_growth_lag2", 0.0) for a in activated_themes)),
+        "volume_pct_change_lag3": float(sum(a["weight"] * a.get("recent_growth_lag3", 0.0) for a in activated_themes)),
+        "volume_pct_change_lag4": float(sum(a["weight"] * a.get("recent_growth_lag4", 0.0) for a in activated_themes)),
         "momentum_lag1": float(sum(a["weight"] * a.get("recent_momentum_lag1", 0.0) for a in activated_themes)),
         "momentum_lag2": float(sum(a["weight"] * a.get("recent_momentum_lag2", 0.0) for a in activated_themes)),
-        "momentum_lag3": float(sum(a["weight"] * a.get("recent_momentum_lag2", 0.0) for a in activated_themes)),
-        "momentum_lag4": float(sum(a["weight"] * a.get("recent_momentum_lag2", 0.0) for a in activated_themes)),
+        "momentum_lag3": float(sum(a["weight"] * a.get("recent_momentum_lag3", 0.0) for a in activated_themes)),
+        "momentum_lag4": float(sum(a["weight"] * a.get("recent_momentum_lag4", 0.0) for a in activated_themes)),
         "trend_slope_4": float(sum(a["weight"] * a.get("trend_slope", 0.0) for a in activated_themes)),
+        "rolling_post_mean_3": float(sum(a["weight"] * a.get("rolling_post_mean_3", 0.0) for a in activated_themes)),
+        "rolling_post_mean_6": float(sum(a["weight"] * a.get("rolling_post_mean_6", 0.0) for a in activated_themes)),
+        "anomaly_score": float(sum(a["weight"] * a.get("recent_anomaly_score", 0.0) for a in activated_themes)),
     }
 
 
@@ -183,8 +186,37 @@ def _infer_with_trained_model(prediction, bundle):
             x[key] = float(value)
     _add_theme_summary_features(x, theme_scores)
 
+    if "momentum_x_volatility" in x:
+        x["momentum_x_volatility"] = x.get("momentum", 0.0) * x.get("volume_volatility", 0.0)
+    if "volume_acceleration" in x:
+        x["volume_acceleration"] = x.get("volume_pct_change_lag1", 0.0) - x.get("volume_pct_change_lag2", 0.0)
+    if "momentum_acceleration" in x:
+        x["momentum_acceleration"] = x.get("momentum_lag1", 0.0) - x.get("momentum_lag2", 0.0)
+    # theme_entropy_change requires a prior window; at single-event inference
+    # we leave it at 0.0 (no delta available). The model was trained on diffs,
+    # so 0.0 = "no change" which is the safest single-snapshot assumption.
+
     X = pd.DataFrame([x], columns=feature_cols).fillna(0.0)
-    if "ensemble_members" in bundle:
+    if "stacking_meta_learner" in bundle and "ensemble_members" in bundle:
+        meta_learner = bundle["stacking_meta_learner"]
+        stacking_meta_cols = bundle.get("stacking_meta_cols", [])
+        meta_features = {col: 1.0 / max(len(labels), 1) for col in stacking_meta_cols}
+        for member in bundle.get("ensemble_members", []):
+            est = member.get("estimator")
+            name = member.get("name", "")
+            if est is None:
+                continue
+            probs = _predict_from_estimator(est, X, labels)
+            for label in labels:
+                meta_features[f"{name}_prob_{label}"] = probs.get(label, 0.0)
+        meta_X = pd.DataFrame([meta_features])[stacking_meta_cols].astype(float)
+        stacking_proba = meta_learner.predict_proba(meta_X)[0]
+        stacking_classes = list(meta_learner.classes_)
+        class_probs = {label: 0.0 for label in labels}
+        for idx, c in enumerate(stacking_classes):
+            if c in labels:
+                class_probs[c] = float(stacking_proba[idx])
+    elif "ensemble_members" in bundle:
         member_probs = []
         for member in bundle.get("ensemble_members", []):
             estimator = member.get("estimator")

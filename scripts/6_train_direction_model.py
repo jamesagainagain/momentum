@@ -11,6 +11,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 
 import joblib
 import numpy as np
@@ -18,7 +19,7 @@ import pandas as pd
 import yaml
 from sklearn.ensemble import ExtraTreesClassifier, HistGradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, confusion_matrix, f1_score
+from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -43,6 +44,15 @@ else:
         pick_label_from_proba,
     )
     from .io_utils import build_temporal_fallback_from_clusters_csv, read_parquet_safe
+
+
+def _progress(step, total, label, start_time=None, width=30):
+    filled = int(width * step / max(total, 1))
+    bar = "█" * filled + "░" * (width - filled)
+    elapsed = f"  {time.time() - start_time:.0f}s" if start_time else ""
+    print(f"\r[{bar}] {step}/{total}  {label}{elapsed}", end="", flush=True)
+    if step >= total:
+        print()
 
 
 def load_config(config_path):
@@ -86,24 +96,31 @@ def model_candidates(model_names, random_state):
     if "random_forest" in names or "rf" in names:
         out["random_forest"] = RandomForestClassifier(
             n_estimators=300,
+            max_depth=10,
+            min_samples_leaf=8,
+            max_leaf_nodes=80,
             n_jobs=-1,
             random_state=random_state,
             class_weight="balanced_subsample",
-            min_samples_leaf=1,
         )
     if "extra_trees" in names or "et" in names:
         out["extra_trees"] = ExtraTreesClassifier(
             n_estimators=400,
+            max_depth=10,
+            min_samples_leaf=8,
+            max_leaf_nodes=80,
             random_state=random_state,
             class_weight="balanced_subsample",
-            min_samples_leaf=1,
             n_jobs=-1,
         )
     if "hist_gbm" in names or "hist_gradient_boosting" in names:
         out["hist_gbm"] = HistGradientBoostingClassifier(
-            max_depth=8,
+            max_depth=4,
+            max_leaf_nodes=15,
+            min_samples_leaf=10,
             learning_rate=0.05,
-            max_iter=400,
+            max_iter=200,
+            l2_regularization=1.0,
             random_state=random_state,
         )
     if "xgboost" in names or "xgb" in names:
@@ -113,11 +130,14 @@ def model_candidates(model_names, random_state):
             out["xgboost"] = XGBClassifier(
                 objective="multi:softprob",
                 num_class=len(DIRECTION_LABELS),
-                n_estimators=300,
-                max_depth=6,
+                n_estimators=200,
+                max_depth=4,
+                min_child_weight=8,
                 learning_rate=0.05,
-                subsample=0.9,
-                colsample_bytree=0.9,
+                subsample=0.8,
+                colsample_bytree=0.7,
+                reg_alpha=0.5,
+                reg_lambda=2.0,
                 random_state=random_state,
                 eval_metric="mlogloss",
                 nthread=-1,
@@ -131,8 +151,15 @@ def model_candidates(model_names, random_state):
             out["lightgbm"] = LGBMClassifier(
                 objective="multiclass",
                 num_class=len(DIRECTION_LABELS),
-                n_estimators=220,
+                n_estimators=200,
+                max_depth=4,
+                num_leaves=15,
+                min_child_samples=10,
                 learning_rate=0.05,
+                subsample=0.8,
+                colsample_bytree=0.7,
+                reg_alpha=0.5,
+                reg_lambda=2.0,
                 random_state=random_state,
                 n_jobs=-1,
                 verbosity=-1,
@@ -147,7 +174,9 @@ def model_candidates(model_names, random_state):
                 loss_function="MultiClass",
                 iterations=500,
                 learning_rate=0.05,
-                depth=8,
+                depth=6,
+                min_data_in_leaf=5,
+                l2_leaf_reg=3.0,
                 random_seed=random_state,
                 verbose=False,
             )
@@ -157,9 +186,20 @@ def model_candidates(model_names, random_state):
 
 
 def evaluate(y_true, y_pred):
+    per_class_precision = precision_score(y_true, y_pred, labels=DIRECTION_LABELS, average=None, zero_division=0)
+    per_class_recall = recall_score(y_true, y_pred, labels=DIRECTION_LABELS, average=None, zero_division=0)
+    per_class_f1 = f1_score(y_true, y_pred, labels=DIRECTION_LABELS, average=None, zero_division=0)
     return {
         "accuracy": float(accuracy_score(y_true, y_pred)),
         "macro_f1": float(f1_score(y_true, y_pred, labels=DIRECTION_LABELS, average="macro", zero_division=0)),
+        "per_class": {
+            label: {
+                "precision": float(per_class_precision[i]),
+                "recall": float(per_class_recall[i]),
+                "f1": float(per_class_f1[i]),
+            }
+            for i, label in enumerate(DIRECTION_LABELS)
+        },
         "confusion_matrix": confusion_matrix(y_true, y_pred, labels=DIRECTION_LABELS).tolist(),
         "labels": DIRECTION_LABELS,
     }
@@ -174,7 +214,7 @@ def choose_best_model(results):
     return ranked[0][0] if ranked else None
 
 
-def generate_walk_forward_folds(times, n_splits, min_train_windows):
+def generate_walk_forward_folds(times, n_splits, min_train_windows, purge_gap=1):
     folds = []
     if len(times) <= min_train_windows:
         return folds
@@ -182,10 +222,11 @@ def generate_walk_forward_folds(times, n_splits, min_train_windows):
     step = max(1, (len(times) - min_train_windows) // max_splits)
     train_end = min_train_windows
     while train_end < len(times):
-        test_end = min(len(times), train_end + step)
-        if test_end <= train_end:
+        test_start = min(len(times), train_end + purge_gap)
+        test_end = min(len(times), test_start + step)
+        if test_end <= test_start:
             break
-        folds.append((times[:train_end], times[train_end:test_end]))
+        folds.append((times[:train_end], times[test_start:test_end]))
         train_end = test_end
         if len(folds) >= max_splits:
             break
@@ -266,6 +307,191 @@ def proba_rows_to_preds(proba_rows, labels, threshold_multipliers):
         preds.append(pred)
         adjusted_rows.append(adjusted)
     return preds, adjusted_rows
+
+
+def _unwrap_estimator(estimator):
+    """Unwrap CalibratedClassifierCV, averaging importances across CV folds."""
+    if hasattr(estimator, "calibrated_classifiers_"):
+        inner_ests = [cc.estimator for cc in estimator.calibrated_classifiers_]
+        # Average feature_importances_ across all calibration folds
+        importances = [
+            e.feature_importances_ for e in inner_ests
+            if hasattr(e, "feature_importances_")
+        ]
+        if importances:
+            avg = np.mean(importances, axis=0)
+            # Return a lightweight object with the averaged importances
+            wrapper = type("_AvgImportances", (), {"feature_importances_": avg})()
+            return wrapper
+        # Fall back to first fold for coef_-based models
+        return inner_ests[0]
+    return estimator
+
+
+def extract_feature_importances(estimator, feature_cols):
+    est = _unwrap_estimator(estimator)
+    if hasattr(est, "feature_importances_"):
+        raw = est.feature_importances_
+    elif hasattr(est, "named_steps"):
+        clf = est.named_steps.get("clf", est)
+        clf = _unwrap_estimator(clf)
+        if hasattr(clf, "feature_importances_"):
+            raw = clf.feature_importances_
+        elif hasattr(clf, "coef_"):
+            raw = np.abs(clf.coef_).mean(axis=0)
+        else:
+            return {}
+    elif hasattr(est, "coef_"):
+        raw = np.abs(est.coef_).mean(axis=0)
+    else:
+        return {}
+    return {col: float(raw[i]) for i, col in enumerate(feature_cols) if i < len(raw)}
+
+
+def prune_features(importances, feature_cols, drop_fraction=0.25):
+    if not importances:
+        return feature_cols
+    sorted_feats = sorted(importances.items(), key=lambda x: x[1])
+    n_drop = max(1, int(len(sorted_feats) * drop_fraction))
+    drop_set = {f for f, _ in sorted_feats[:n_drop]}
+    pruned = [c for c in feature_cols if c not in drop_set]
+    return pruned if pruned else feature_cols
+
+
+def build_stacking_meta_features(fitted_models, X, labels):
+    cols = []
+    arrays = []
+    for name in sorted(fitted_models.keys()):
+        est = fitted_models[name]
+        proba_rows = predict_proba_frame(est, X, labels)
+        for label in labels:
+            col_name = f"{name}_prob_{label}"
+            cols.append(col_name)
+            arrays.append([row.get(label, 0.0) for row in proba_rows])
+    meta_df = pd.DataFrame(dict(zip(cols, arrays)), index=X.index)
+    return meta_df, cols
+
+
+def train_stacking_ensemble(
+    train_df, feature_cols, estimators, labels, numeric_target_models,
+    label_to_int, calibration_enabled, random_state, n_meta_folds=3,
+):
+    train_times = sorted(train_df["time_window"].unique())
+    if len(train_times) < n_meta_folds + 1:
+        return None, None, None
+
+    oof_meta = pd.DataFrame(index=train_df.index)
+    fold_size = max(1, len(train_times) // (n_meta_folds + 1))
+    folds = []
+    for i in range(n_meta_folds):
+        fold_train_end = fold_size * (i + 1)
+        fold_test_start = fold_train_end + 1
+        fold_test_end = min(len(train_times), fold_test_start + fold_size)
+        if fold_test_start >= len(train_times) or fold_test_end <= fold_test_start:
+            continue
+        folds.append((train_times[:fold_train_end], train_times[fold_test_start:fold_test_end]))
+
+    if not folds:
+        return None, None, None
+
+    meta_cols = []
+    for label in labels:
+        for name in sorted(estimators.keys()):
+            meta_cols.append(f"{name}_prob_{label}")
+
+    for col in meta_cols:
+        oof_meta[col] = np.nan
+
+    for fold_train_times, fold_test_times in folds:
+        fold_train = train_df[train_df["time_window"].isin(fold_train_times)]
+        fold_test = train_df[train_df["time_window"].isin(fold_test_times)]
+        if fold_train.empty or fold_test.empty:
+            continue
+        X_ft = fold_train[feature_cols].fillna(0.0)
+        X_fv = fold_test[feature_cols].fillna(0.0)
+        y_ft = fold_train["target"]
+        for name in sorted(estimators.keys()):
+            est = copy.deepcopy(estimators[name])
+            y_fit = y_ft.map(label_to_int).astype(int) if name in numeric_target_models else y_ft
+            if name in numeric_target_models and len(y_fit.unique()) < len(labels):
+                for label in labels:
+                    oof_meta.loc[fold_test.index, f"{name}_prob_{label}"] = 1.0 / len(labels)
+                continue
+            est.fit(X_ft, y_fit)
+            est, _ = calibrate_if_enabled(est, X_ft, y_fit, calibration_enabled)
+            proba_rows = predict_proba_frame(est, X_fv, labels)
+            for label in labels:
+                col = f"{name}_prob_{label}"
+                oof_meta.loc[fold_test.index, col] = [row.get(label, 0.0) for row in proba_rows]
+
+    valid_rows = oof_meta.dropna()
+    if len(valid_rows) < 10:
+        return None, None, None
+
+    y_meta = train_df.loc[valid_rows.index, "target"]
+    X_meta = valid_rows[meta_cols].astype(float)
+
+    meta_learner = Pipeline(steps=[
+        ("scaler", StandardScaler()),
+        ("clf", LogisticRegression(
+            max_iter=2000,
+            class_weight="balanced",
+            random_state=random_state,
+            C=1.0,
+        )),
+    ])
+    meta_learner.fit(X_meta, y_meta)
+    return meta_learner, meta_cols, sorted(estimators.keys())
+
+
+def _evaluate_fold(fold_data):
+    (train_times, test_times, frame_eps, feature_cols,
+     estimators, numeric_target_models, label_to_int,
+     calibration_enabled, epsilon) = fold_data
+    train_df = frame_eps[frame_eps["time_window"].isin(train_times)]
+    test_df = frame_eps[frame_eps["time_window"].isin(test_times)]
+    if train_df.empty or test_df.empty:
+        return None
+    X_train = train_df[feature_cols].fillna(0.0)
+    y_train = train_df["target"]
+    X_test = test_df[feature_cols].fillna(0.0)
+    y_test = test_df["target"]
+
+    fold_metrics = {}
+    member_probs = []
+    for name, estimator in estimators.items():
+        est = copy.deepcopy(estimator)
+        if hasattr(est, "n_jobs"):
+            est.set_params(n_jobs=1)
+        elif hasattr(est, "nthread"):
+            est.set_params(nthread=1)
+        y_fit = y_train.map(label_to_int).astype(int) if name in numeric_target_models else y_train
+        if name in numeric_target_models and len(y_fit.unique()) < len(DIRECTION_LABELS):
+            fold_metrics[name] = evaluate(y_test, pd.Series(["flat"] * len(y_test), index=y_test.index))
+            continue
+        est.fit(X_train, y_fit)
+        est, _ = calibrate_if_enabled(est, X_train, y_fit, calibration_enabled)
+        proba_rows = predict_proba_frame(est, X_test, DIRECTION_LABELS)
+        preds, _ = proba_rows_to_preds(
+            proba_rows=proba_rows,
+            labels=DIRECTION_LABELS,
+            threshold_multipliers={"down": 1.0, "flat": 1.0, "up": 1.0},
+        )
+        fold_metrics[name] = evaluate(y_test, preds)
+        member_probs.append(proba_rows)
+
+    if len(member_probs) >= 2:
+        ensemble_probs = ensemble_proba_rows(member_probs, DIRECTION_LABELS)
+        ensemble_preds, _ = proba_rows_to_preds(
+            proba_rows=ensemble_probs,
+            labels=DIRECTION_LABELS,
+            threshold_multipliers={"down": 1.0, "flat": 1.0, "up": 1.0},
+        )
+        fold_metrics["soft_voting_ensemble"] = evaluate(y_test, ensemble_preds)
+
+    heur = test_df.apply(lambda row: heuristic_predict_direction(row, epsilon=epsilon), axis=1)
+    fold_metrics["heuristic"] = evaluate(y_test, heur)
+    return fold_metrics
 
 
 def default_threshold_candidates():
@@ -371,7 +597,17 @@ def main():
     best_cv_score = -1.0
     walk_forward_summary = {"enabled": True, "fold_count": 0, "by_epsilon": {}}
 
-    for epsilon in sorted(set(epsilon_grid)):
+    max_cores_cfg = int(config.get("max_cores", 0))
+    cv_n_jobs = max_cores_cfg if max_cores_cfg > 0 else -1
+
+    epsilon_list = sorted(set(epsilon_grid))
+    n_models = len(estimators)
+    total_cv_steps = len(epsilon_list) * walk_forward_splits
+    cv_step = 0
+    t_start = time.time()
+    print(f"Step 1/3  Walk-forward CV  ({len(epsilon_list)} epsilons × {walk_forward_splits} folds × {n_models} models)")
+
+    for epsilon in epsilon_list:
         frame_eps, feature_cols = build_training_frame(
             temporal_df=temporal_df,
             theme_df=theme_df,
@@ -388,49 +624,20 @@ def main():
         )
         if not folds:
             continue
-        fold_scores = []
-        for train_times, test_times in folds:
-            train_df = frame_eps[frame_eps["time_window"].isin(train_times)]
-            test_df = frame_eps[frame_eps["time_window"].isin(test_times)]
-            if train_df.empty or test_df.empty:
-                continue
-            X_train = train_df[feature_cols].fillna(0.0)
-            y_train = train_df["target"]
-            X_test = test_df[feature_cols].fillna(0.0)
-            y_test = test_df["target"]
 
-            fold_metrics = {}
-            member_probs = []
-            for name, estimator in estimators.items():
-                est = copy.deepcopy(estimator)
-                y_fit = y_train.map(label_to_int).astype(int) if name in numeric_target_models else y_train
-                # Skip numeric-target models if fold is missing classes (XGBoost requires contiguous labels)
-                if name in numeric_target_models and len(y_fit.unique()) < len(DIRECTION_LABELS):
-                    fold_metrics[name] = evaluate(y_test, pd.Series(["flat"] * len(y_test), index=y_test.index))
-                    continue
-                est.fit(X_train, y_fit)
-                est, _ = calibrate_if_enabled(est, X_train, y_fit, calibration_enabled)
-                proba_rows = predict_proba_frame(est, X_test, DIRECTION_LABELS)
-                preds, _ = proba_rows_to_preds(
-                    proba_rows=proba_rows,
-                    labels=DIRECTION_LABELS,
-                    threshold_multipliers={"down": 1.0, "flat": 1.0, "up": 1.0},
-                )
-                fold_metrics[name] = evaluate(y_test, preds)
-                member_probs.append(proba_rows)
-
-            if len(member_probs) >= 2:
-                ensemble_probs = ensemble_proba_rows(member_probs, DIRECTION_LABELS)
-                ensemble_preds, _ = proba_rows_to_preds(
-                    proba_rows=ensemble_probs,
-                    labels=DIRECTION_LABELS,
-                    threshold_multipliers={"down": 1.0, "flat": 1.0, "up": 1.0},
-                )
-                fold_metrics["soft_voting_ensemble"] = evaluate(y_test, ensemble_preds)
-
-            heur = test_df.apply(lambda row: heuristic_predict_direction(row, epsilon=epsilon), axis=1)
-            fold_metrics["heuristic"] = evaluate(y_test, heur)
-            fold_scores.append(fold_metrics)
+        fold_inputs = [
+            (train_times, test_times, frame_eps, feature_cols,
+             estimators, numeric_target_models, label_to_int,
+             calibration_enabled, epsilon)
+            for train_times, test_times in folds
+        ]
+        _progress(cv_step, total_cv_steps, f"ε={epsilon}", t_start)
+        raw_results = joblib.Parallel(n_jobs=cv_n_jobs, prefer="processes")(
+            joblib.delayed(_evaluate_fold)(fd) for fd in fold_inputs
+        )
+        fold_scores = [r for r in raw_results if r is not None]
+        cv_step += len(fold_inputs)
+        _progress(cv_step, total_cv_steps, f"ε={epsilon} done", t_start)
 
         if not fold_scores:
             continue
@@ -493,7 +700,10 @@ def main():
     fitted = {}
     calibration_info = {}
     member_prob_rows = []
-    for name, estimator in estimators.items():
+    model_names_list = list(estimators.keys())
+    print(f"Step 2/3  Final model fit  ({len(model_names_list)} models, ε={epsilon})")
+    for i, (name, estimator) in enumerate(estimators.items()):
+        _progress(i, len(model_names_list), name, t_start)
         est = copy.deepcopy(estimator)
         y_fit = y_train.map(label_to_int).astype(int) if name in numeric_target_models else y_train
         est.fit(X_train, y_fit)
@@ -502,6 +712,7 @@ def main():
         fitted[name] = est
         proba_rows = predict_proba_frame(est, X_test, DIRECTION_LABELS)
         member_prob_rows.append((name, proba_rows))
+    _progress(len(model_names_list), len(model_names_list), "done", t_start)
 
     # Threshold tuning on holdout
     threshold_eval = {}
@@ -530,6 +741,10 @@ def main():
         results[name] = best_metrics
         threshold_eval[name] = {"best_thresholds": best_thresholds}
 
+    print(f"Step 3/3  Ensemble, pruning, diagnostics")
+    stacking_meta_learner = None
+    stacking_meta_cols = None
+    stacking_base_names = None
     if len(member_prob_rows) >= 2:
         ensemble_rows = ensemble_proba_rows([rows for _, rows in member_prob_rows], DIRECTION_LABELS)
         best_metrics = None
@@ -557,12 +772,107 @@ def main():
         threshold_eval["soft_voting_ensemble"] = {"best_thresholds": best_thresholds}
         tuned_predictions["soft_voting_ensemble"] = best_preds
 
+        stacking_result = train_stacking_ensemble(
+            train_df=train_df,
+            feature_cols=feature_cols,
+            estimators=estimators,
+            labels=DIRECTION_LABELS,
+            numeric_target_models=numeric_target_models,
+            label_to_int=label_to_int,
+            calibration_enabled=calibration_enabled,
+            random_state=random_state,
+        )
+        if stacking_result[0] is not None:
+            stacking_meta_learner, stacking_meta_cols, stacking_base_names = stacking_result
+            test_meta, _ = build_stacking_meta_features(fitted, X_test, DIRECTION_LABELS)
+            test_meta = test_meta[stacking_meta_cols].astype(float)
+            stacking_proba = stacking_meta_learner.predict_proba(test_meta)
+            stacking_classes = list(stacking_meta_learner.classes_)
+            stacking_proba_rows = []
+            for row in stacking_proba:
+                probs = {label: 0.0 for label in DIRECTION_LABELS}
+                for idx, c in enumerate(stacking_classes):
+                    if c in DIRECTION_LABELS:
+                        probs[c] = float(row[idx])
+                stacking_proba_rows.append(probs)
+            best_metrics = None
+            best_thresholds = None
+            best_preds = None
+            for cand in threshold_candidates:
+                preds, _ = proba_rows_to_preds(
+                    proba_rows=stacking_proba_rows,
+                    labels=DIRECTION_LABELS,
+                    threshold_multipliers=cand,
+                )
+                metrics = evaluate(y_test, preds)
+                if (
+                    best_metrics is None
+                    or metrics["macro_f1"] > best_metrics["macro_f1"]
+                    or (
+                        metrics["macro_f1"] == best_metrics["macro_f1"]
+                        and metrics["accuracy"] > best_metrics["accuracy"]
+                    )
+                ):
+                    best_metrics = metrics
+                    best_thresholds = cand
+                    best_preds = preds
+            results["stacking_ensemble"] = best_metrics
+            threshold_eval["stacking_ensemble"] = {"best_thresholds": best_thresholds}
+            tuned_predictions["stacking_ensemble"] = best_preds
+            print(f"Stacking ensemble: accuracy={best_metrics['accuracy']:.4f}, macro_f1={best_metrics['macro_f1']:.4f}")
+
     heuristic_preds = test_df.apply(lambda row: heuristic_predict_direction(row, epsilon=epsilon), axis=1)
     results["heuristic"] = evaluate(y_test, heuristic_preds)
 
     best_name = choose_best_model(results)
     if best_name is None:
         raise RuntimeError("Failed to select a best model.")
+
+    feature_importance_map = {}
+    pruning_report = {"attempted": False}
+    if best_name in fitted and best_name not in ("soft_voting_ensemble", "stacking_ensemble"):
+        importances = extract_feature_importances(fitted[best_name], feature_cols)
+        feature_importance_map = importances
+        pruned_cols = prune_features(importances, feature_cols, drop_fraction=0.25)
+        if len(pruned_cols) < len(feature_cols):
+            pruning_report["attempted"] = True
+            pruning_report["original_count"] = len(feature_cols)
+            pruning_report["pruned_count"] = len(pruned_cols)
+            pruning_report["dropped"] = [c for c in feature_cols if c not in pruned_cols]
+            X_train_p = train_df[pruned_cols].fillna(0.0)
+            X_test_p = test_df[pruned_cols].fillna(0.0)
+            est_p = copy.deepcopy(estimators[best_name])
+            y_fit_p = y_train.map(label_to_int).astype(int) if best_name in numeric_target_models else y_train
+            est_p.fit(X_train_p, y_fit_p)
+            est_p, cal_p = calibrate_if_enabled(est_p, X_train_p, y_fit_p, calibration_enabled)
+            proba_p = predict_proba_frame(est_p, X_test_p, DIRECTION_LABELS)
+            selected_thresh = threshold_eval.get(best_name, {}).get("best_thresholds", {"down": 1.0, "flat": 1.0, "up": 1.0})
+            preds_p, _ = proba_rows_to_preds(proba_p, DIRECTION_LABELS, selected_thresh)
+            metrics_p = evaluate(y_test, preds_p)
+            pruning_report["pruned_macro_f1"] = metrics_p["macro_f1"]
+            pruning_report["pruned_accuracy"] = metrics_p["accuracy"]
+            pruning_report["original_macro_f1"] = results[best_name]["macro_f1"]
+            force_prune = bool(training_cfg.get("force_feature_prune", False))
+            max_f1_drop = float(training_cfg.get("force_prune_max_f1_drop", 0.0))
+            f1_drop = results[best_name]["macro_f1"] - metrics_p["macro_f1"]
+            accept_pruned = (
+                metrics_p["macro_f1"] >= results[best_name]["macro_f1"]
+                or (force_prune and f1_drop <= max_f1_drop)
+            )
+            if accept_pruned:
+                pruning_report["accepted"] = True
+                if f1_drop > 0:
+                    pruning_report["accepted_via_force_prune"] = True
+                    pruning_report["f1_drop_accepted"] = float(f1_drop)
+                feature_cols = pruned_cols
+                fitted[best_name] = est_p
+                calibration_info[best_name] = bool(cal_p)
+                results[best_name] = metrics_p
+                print(f"Feature pruning accepted: {pruning_report['original_count']} -> {pruning_report['pruned_count']} features"
+                      + (f" (force_prune, F1 drop {f1_drop:.2%})" if f1_drop > 0 else ""))
+            else:
+                pruning_report["accepted"] = False
+                print(f"Feature pruning rejected: pruned F1 {metrics_p['macro_f1']:.4f} < original {results[best_name]['macro_f1']:.4f}")
 
     selected_thresholds = threshold_eval.get(best_name, {}).get(
         "best_thresholds",
@@ -575,7 +885,13 @@ def main():
         "target_epsilon": epsilon,
         "class_thresholds": selected_thresholds,
     }
-    if best_name == "soft_voting_ensemble":
+    if best_name == "stacking_ensemble" and stacking_meta_learner is not None:
+        artifact["stacking_meta_learner"] = stacking_meta_learner
+        artifact["stacking_meta_cols"] = stacking_meta_cols
+        artifact["ensemble_members"] = [
+            {"name": name, "estimator": fitted[name]} for name in sorted(fitted.keys())
+        ]
+    elif best_name == "soft_voting_ensemble":
         artifact["ensemble_members"] = [
             {"name": name, "estimator": fitted[name]} for name in sorted(fitted.keys())
         ]
@@ -595,6 +911,79 @@ def main():
         "high_value": high_q,
     }
     joblib.dump(artifact, model_path)
+
+    # --- Overfitting diagnostics ---
+    train_eval = {}
+    if best_name in fitted and best_name not in ("soft_voting_ensemble", "stacking_ensemble"):
+        train_proba = predict_proba_frame(fitted[best_name], X_train, DIRECTION_LABELS)
+        train_preds, _ = proba_rows_to_preds(train_proba, DIRECTION_LABELS, selected_thresholds)
+        train_eval = evaluate(y_train, train_preds)
+
+    best_cv_macro_f1 = None
+    if walk_forward_summary.get("enabled") and walk_forward_summary.get("by_epsilon"):
+        eps_key = str(epsilon)
+        cv_by_eps = walk_forward_summary["by_epsilon"].get(eps_key, {})
+        if best_name in cv_by_eps:
+            best_cv_macro_f1 = cv_by_eps[best_name].get("macro_f1")
+        elif cv_by_eps:
+            best_cv_name = max(cv_by_eps, key=lambda k: cv_by_eps[k].get("macro_f1", 0) if k != "heuristic" else 0)
+            if best_cv_name != "heuristic":
+                best_cv_macro_f1 = cv_by_eps[best_cv_name].get("macro_f1")
+
+    overfit_diagnosis = {
+        "train_accuracy": train_eval.get("accuracy"),
+        "train_macro_f1": train_eval.get("macro_f1"),
+        "test_accuracy": results[best_name]["accuracy"],
+        "test_macro_f1": results[best_name]["macro_f1"],
+        "walk_forward_cv_macro_f1": best_cv_macro_f1,
+    }
+
+    if train_eval:
+        train_test_gap = train_eval["macro_f1"] - results[best_name]["macro_f1"]
+        overfit_diagnosis["train_test_f1_gap"] = float(train_test_gap)
+        if train_test_gap > 0.15:
+            overfit_diagnosis["verdict"] = "likely_overfitting"
+            overfit_diagnosis["detail"] = (
+                f"Train F1 ({train_eval['macro_f1']:.2%}) exceeds test F1 "
+                f"({results[best_name]['macro_f1']:.2%}) by {train_test_gap:.2%}. "
+                "Consider reducing model complexity or adding regularization."
+            )
+        elif train_test_gap > 0.08:
+            overfit_diagnosis["verdict"] = "mild_overfitting"
+            overfit_diagnosis["detail"] = (
+                f"Train F1 ({train_eval['macro_f1']:.2%}) exceeds test F1 "
+                f"({results[best_name]['macro_f1']:.2%}) by {train_test_gap:.2%}. "
+                "Moderate gap — monitor but may be acceptable."
+            )
+        else:
+            overfit_diagnosis["verdict"] = "no_significant_overfitting"
+            overfit_diagnosis["detail"] = (
+                f"Train F1 ({train_eval['macro_f1']:.2%}) and test F1 "
+                f"({results[best_name]['macro_f1']:.2%}) are within {train_test_gap:.2%}."
+            )
+
+    if best_cv_macro_f1 is not None:
+        holdout_cv_gap = results[best_name]["macro_f1"] - best_cv_macro_f1
+        overfit_diagnosis["holdout_cv_f1_gap"] = float(holdout_cv_gap)
+        if holdout_cv_gap > 0.10:
+            overfit_diagnosis["temporal_stability"] = "unstable"
+            overfit_diagnosis["temporal_detail"] = (
+                f"Holdout F1 ({results[best_name]['macro_f1']:.2%}) exceeds walk-forward CV F1 "
+                f"({best_cv_macro_f1:.2%}) by {holdout_cv_gap:.2%}. "
+                "The model may not generalise across time windows. "
+                "Consider sliding-window training or more walk-forward folds."
+            )
+        else:
+            overfit_diagnosis["temporal_stability"] = "stable"
+            overfit_diagnosis["temporal_detail"] = (
+                f"Holdout F1 ({results[best_name]['macro_f1']:.2%}) and walk-forward CV F1 "
+                f"({best_cv_macro_f1:.2%}) are within {holdout_cv_gap:.2%}."
+            )
+
+    print(f"Overfit check: {overfit_diagnosis.get('verdict', 'n/a')} | "
+          f"train F1={overfit_diagnosis.get('train_macro_f1', 'n/a')}, "
+          f"test F1={overfit_diagnosis.get('test_macro_f1')}, "
+          f"CV F1={best_cv_macro_f1 or 'n/a'}")
 
     metrics = {
         "split": {
@@ -622,6 +1011,9 @@ def main():
             "enabled": calibration_enabled,
             "applied_by_model": calibration_info,
         },
+        "feature_importance": feature_importance_map,
+        "feature_pruning": pruning_report,
+        "overfitting_diagnostics": overfit_diagnosis,
         "optional_models_skipped": skipped_optional,
         "comparison_vs_heuristic": {
             "best_accuracy_delta": float(results[best_name]["accuracy"] - results["heuristic"]["accuracy"]),

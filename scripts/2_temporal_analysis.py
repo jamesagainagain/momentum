@@ -10,6 +10,7 @@ Script 2: Temporal Analysis
 import argparse
 import os
 import sys
+from concurrent.futures import ProcessPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -18,6 +19,19 @@ import pandas as pd
 import yaml
 
 from scripts.temporal_recency import build_weekly_recency_snapshots
+
+
+def _cpu_count():
+    try:
+        return len(os.sched_getaffinity(0))
+    except AttributeError:
+        return os.cpu_count() or 1
+
+
+def _get_n_workers(config):
+    max_cores = int(config.get("max_cores", 0))
+    available = _cpu_count()
+    return max_cores if max_cores > 0 else available
 
 
 def load_config(config_path):
@@ -69,6 +83,46 @@ def compute_sentiment_distribution(group, sentiment_col):
     }
 
 
+def _process_single_cluster(args):
+    """Process one cluster's temporal metrics. Top-level function for pickling."""
+    cluster_id, cdf_parquet_bytes, window, col_flags, ts_col = args
+    has_author, has_likes, has_reach, has_shares, has_comments, has_label = col_flags
+
+    import io
+    cdf = pd.read_parquet(io.BytesIO(cdf_parquet_bytes))
+    cdf[ts_col] = pd.to_datetime(cdf[ts_col], errors='coerce')
+    cdf = cdf.dropna(subset=[ts_col]).set_index(ts_col)
+
+    label = cdf['cluster_label'].iloc[0] if has_label else str(cluster_id)
+
+    resampled = cdf.resample(window).agg(
+        post_count=('cluster', 'count'),
+        unique_authors=('Author', 'nunique') if has_author else ('cluster', 'count'),
+        total_likes=('likes', 'sum') if has_likes else ('cluster', 'count'),
+        total_reach=('reach', 'sum') if has_reach else ('cluster', 'count'),
+        total_shares=('shares', 'sum') if has_shares else ('cluster', 'count'),
+        total_comments=('comments', 'sum') if has_comments else ('cluster', 'count'),
+    ).fillna(0)
+
+    resampled['cluster'] = cluster_id
+    resampled['cluster_label'] = label
+    resampled['avg_likes'] = resampled['total_likes'] / resampled['post_count'].replace(0, np.nan)
+    resampled['avg_reach'] = resampled['total_reach'] / resampled['post_count'].replace(0, np.nan)
+    resampled['volume_pct_change'] = resampled['post_count'].pct_change().fillna(0)
+    resampled['engagement_growth'] = (resampled['total_likes'] + resampled['total_shares']).pct_change().fillna(0)
+    resampled['volume_volatility'] = resampled['post_count'].rolling(3, min_periods=1).std().fillna(0)
+    rolling_mean = resampled['post_count'].rolling(3, min_periods=1).mean()
+    resampled['momentum'] = resampled['post_count'] - rolling_mean
+
+    mean_vol = resampled['post_count'].mean()
+    std_vol = resampled['post_count'].std()
+    resampled['anomaly_score'] = (resampled['post_count'] - mean_vol) / (std_vol if std_vol > 0 else 1)
+    resampled['market_share'] = np.nan
+    resampled['lifecycle_state'] = classify_lifecycle(resampled)
+
+    return resampled.reset_index()
+
+
 def run_temporal_analysis(df, window, config):
     ts_col = config['input']['timestamp_column']
     # Pandas 2.2+: 'M' deprecated for month-end, use 'ME'
@@ -76,72 +130,42 @@ def run_temporal_analysis(df, window, config):
         window = '1ME'
     df[ts_col] = pd.to_datetime(df[ts_col], errors='coerce')
     df = df.dropna(subset=[ts_col])
-    df = df.set_index(ts_col)
 
-    engagement_cols = {
-        'likes': 'total_likes',
-        'reach': 'total_reach',
-        'shares': 'total_shares',
-        'comments': 'total_comments',
-    }
-    for col in engagement_cols:
+    for col in ['likes', 'reach', 'shares', 'comments']:
         if col not in df.columns:
             df[col] = 0
 
-    # Detect sentiment column
-    sentiment_col = None
-    for candidate in ['Sentiment', 'sentiment']:
-        if candidate in df.columns:
-            sentiment_col = candidate
-            break
-
-    records = []
     clusters = sorted(df['cluster'].unique())
-    print(f"Analysing {len(clusters)} clusters with window='{window}'...")
+    n_workers = _get_n_workers(config)
+    print(f"Analysing {len(clusters)} clusters with window='{window}' using {n_workers} workers...")
 
-    for cluster_id in clusters:
-        cdf = df[df['cluster'] == cluster_id].copy()
-        label = cdf['cluster_label'].iloc[0] if 'cluster_label' in cdf.columns else str(cluster_id)
+    col_flags = (
+        'Author' in df.columns,
+        'likes' in df.columns,
+        'reach' in df.columns,
+        'shares' in df.columns,
+        'comments' in df.columns,
+        'cluster_label' in df.columns,
+    )
 
-        resampled = cdf.resample(window).agg(
-            post_count=('cluster', 'count'),
-            unique_authors=('Author', 'nunique') if 'Author' in cdf.columns else ('cluster', 'count'),
-            total_likes=('likes', 'sum') if 'likes' in cdf.columns else ('cluster', 'count'),
-            total_reach=('reach', 'sum') if 'reach' in cdf.columns else ('cluster', 'count'),
-            total_shares=('shares', 'sum') if 'shares' in cdf.columns else ('cluster', 'count'),
-            total_comments=('comments', 'sum') if 'comments' in cdf.columns else ('cluster', 'count'),
-        ).fillna(0)
+    # Serialize per-cluster DataFrames as parquet bytes for safe pickling
+    import io
+    task_args = []
+    for cid in clusters:
+        buf = io.BytesIO()
+        df[df['cluster'] == cid].to_parquet(buf, index=False)
+        task_args.append((cid, buf.getvalue(), window, col_flags, ts_col))
 
-        resampled['cluster'] = cluster_id
-        resampled['cluster_label'] = label
+    if n_workers > 1 and len(clusters) > 4:
+        with ProcessPoolExecutor(max_workers=n_workers) as ex:
+            records = list(ex.map(_process_single_cluster, task_args))
+    else:
+        records = [_process_single_cluster(a) for a in task_args]
 
-        # Derived metrics
-        resampled['avg_likes'] = resampled['total_likes'] / resampled['post_count'].replace(0, np.nan)
-        resampled['avg_reach'] = resampled['total_reach'] / resampled['post_count'].replace(0, np.nan)
-        resampled['volume_pct_change'] = resampled['post_count'].pct_change().fillna(0)
-        resampled['engagement_growth'] = (resampled['total_likes'] + resampled['total_shares']).pct_change().fillna(0)
-        resampled['volume_volatility'] = resampled['post_count'].rolling(3, min_periods=1).std().fillna(0)
-        rolling_mean = resampled['post_count'].rolling(3, min_periods=1).mean()
-        resampled['momentum'] = resampled['post_count'] - rolling_mean
-
-        # Anomaly score (z-score)
-        mean_vol = resampled['post_count'].mean()
-        std_vol = resampled['post_count'].std()
-        resampled['anomaly_score'] = (resampled['post_count'] - mean_vol) / (std_vol if std_vol > 0 else 1)
-
-        # Market share computed later (across clusters)
-        resampled['market_share'] = np.nan
-
-        # Lifecycle
-        lifecycle = classify_lifecycle(resampled)
-        resampled['lifecycle_state'] = lifecycle
-
-        records.append(resampled)
-
-    temporal_df = pd.concat(records).reset_index()
+    temporal_df = pd.concat(records, ignore_index=True)
     temporal_df = temporal_df.rename(columns={ts_col: 'time_window'})
 
-    # Market share
+    # Market share (cross-cluster, must be computed after merge)
     total_per_window = temporal_df.groupby('time_window')['post_count'].transform('sum')
     temporal_df['market_share'] = temporal_df['post_count'] / total_per_window.replace(0, np.nan)
 
@@ -253,6 +277,7 @@ def main():
         lookback_months=int(recency_cfg.get("recency_lookback_months", 12)),
         min_posts=int(recency_cfg.get("recency_min_posts_per_window", 3)),
         min_density=float(recency_cfg.get("recency_min_density", 0.5)),
+        n_workers=_get_n_workers(config),
     )
     weekly_recency_parquet = resolve(
         config["output"].get("cluster_trend_snapshots_1w_recent",

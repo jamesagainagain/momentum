@@ -77,6 +77,23 @@ def build_training_frame(temporal_df, theme_df, epsilon, max_lag=4):
         base["theme_top2_score"] = 0.0
         base["theme_entropy"] = 0.0
 
+    for col in ("momentum", "volume_volatility"):
+        if col not in base.columns:
+            base[col] = 0.0
+    base["momentum_x_volatility"] = (
+        pd.to_numeric(base["momentum"], errors="coerce").fillna(0.0)
+        * pd.to_numeric(base["volume_volatility"], errors="coerce").fillna(0.0)
+    )
+    base["volume_acceleration"] = (
+        pd.to_numeric(base.get("volume_pct_change_lag1", 0.0), errors="coerce").fillna(0.0)
+        - pd.to_numeric(base.get("volume_pct_change_lag2", 0.0), errors="coerce").fillna(0.0)
+    )
+    base["momentum_acceleration"] = (
+        pd.to_numeric(base.get("momentum_lag1", 0.0), errors="coerce").fillna(0.0)
+        - pd.to_numeric(base.get("momentum_lag2", 0.0), errors="coerce").fillna(0.0)
+    )
+    base["theme_entropy_change"] = base.groupby("cluster")["theme_entropy"].diff().fillna(0.0)
+
     feature_cols = [
         *sorted(theme_cols),
         "momentum",
@@ -90,6 +107,10 @@ def build_training_frame(temporal_df, theme_df, epsilon, max_lag=4):
         "theme_top1_score",
         "theme_top2_score",
         "theme_entropy",
+        "momentum_x_volatility",
+        "volume_acceleration",
+        "momentum_acceleration",
+        "theme_entropy_change",
         "volume_pct_change_lag1",
         "volume_pct_change_lag2",
         "volume_pct_change_lag3",

@@ -191,8 +191,15 @@ def build_cluster_profiles(temporal_df, lookback=3):
                 "recent_momentum",
                 "recent_growth_lag1",
                 "recent_growth_lag2",
+                "recent_growth_lag3",
+                "recent_growth_lag4",
                 "recent_momentum_lag1",
                 "recent_momentum_lag2",
+                "recent_momentum_lag3",
+                "recent_momentum_lag4",
+                "rolling_post_mean_3",
+                "rolling_post_mean_6",
+                "recent_anomaly_score",
                 "trend_slope",
                 "direction_score",
                 "direction_label",
@@ -216,10 +223,20 @@ def build_cluster_profiles(temporal_df, lookback=3):
         momentum_series = cdf.get("momentum", pd.Series([0.0])).fillna(0.0)
         growth_lag1 = float(growth_series.iloc[-1]) if len(growth_series) >= 1 else 0.0
         growth_lag2 = float(growth_series.iloc[-2]) if len(growth_series) >= 2 else growth_lag1
+        growth_lag3 = float(growth_series.iloc[-3]) if len(growth_series) >= 3 else growth_lag2
+        growth_lag4 = float(growth_series.iloc[-4]) if len(growth_series) >= 4 else growth_lag3
         momentum_lag1 = float(momentum_series.iloc[-1]) if len(momentum_series) >= 1 else 0.0
         momentum_lag2 = float(momentum_series.iloc[-2]) if len(momentum_series) >= 2 else momentum_lag1
+        momentum_lag3 = float(momentum_series.iloc[-3]) if len(momentum_series) >= 3 else momentum_lag2
+        momentum_lag4 = float(momentum_series.iloc[-4]) if len(momentum_series) >= 4 else momentum_lag3
 
-        y = cdf.get("post_count", pd.Series([0.0])).fillna(0).to_numpy(dtype=float)
+        post_series = cdf.get("post_count", pd.Series([0.0])).fillna(0.0)
+        rolling_3 = float(post_series.rolling(3, min_periods=1).mean().iloc[-1]) if len(post_series) >= 1 else 0.0
+        rolling_6 = float(post_series.rolling(6, min_periods=1).mean().iloc[-1]) if len(post_series) >= 1 else 0.0
+        anomaly_series = cdf.get("anomaly_score", pd.Series([0.0])).fillna(0.0)
+        recent_anomaly = float(anomaly_series.iloc[-1]) if len(anomaly_series) >= 1 else 0.0
+
+        y = post_series.to_numpy(dtype=float)
         if len(y) > 1:
             x = np.arange(len(y), dtype=float)
             trend_slope = float(np.polyfit(x, y, 1)[0])
@@ -248,8 +265,15 @@ def build_cluster_profiles(temporal_df, lookback=3):
                 "recent_momentum": recent_momentum,
                 "recent_growth_lag1": growth_lag1,
                 "recent_growth_lag2": growth_lag2,
+                "recent_growth_lag3": growth_lag3,
+                "recent_growth_lag4": growth_lag4,
                 "recent_momentum_lag1": momentum_lag1,
                 "recent_momentum_lag2": momentum_lag2,
+                "recent_momentum_lag3": momentum_lag3,
+                "recent_momentum_lag4": momentum_lag4,
+                "rolling_post_mean_3": rolling_3,
+                "rolling_post_mean_6": rolling_6,
+                "recent_anomaly_score": recent_anomaly,
                 "trend_slope": trend_slope,
                 "direction_score": direction_score,
                 "direction_label": direction_label,
@@ -330,8 +354,15 @@ def estimate_event_direction(
                 "recent_momentum": float(profile.get("recent_momentum", 0.0)),
                 "recent_growth_lag1": float(profile.get("recent_growth_lag1", 0.0)),
                 "recent_growth_lag2": float(profile.get("recent_growth_lag2", 0.0)),
+                "recent_growth_lag3": float(profile.get("recent_growth_lag3", 0.0)),
+                "recent_growth_lag4": float(profile.get("recent_growth_lag4", 0.0)),
                 "recent_momentum_lag1": float(profile.get("recent_momentum_lag1", 0.0)),
                 "recent_momentum_lag2": float(profile.get("recent_momentum_lag2", 0.0)),
+                "recent_momentum_lag3": float(profile.get("recent_momentum_lag3", 0.0)),
+                "recent_momentum_lag4": float(profile.get("recent_momentum_lag4", 0.0)),
+                "rolling_post_mean_3": float(profile.get("rolling_post_mean_3", 0.0)),
+                "rolling_post_mean_6": float(profile.get("rolling_post_mean_6", 0.0)),
+                "recent_anomaly_score": float(profile.get("recent_anomaly_score", 0.0)),
                 "threshold": threshold,
             }
         )
