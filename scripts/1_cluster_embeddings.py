@@ -12,6 +12,8 @@ import argparse
 import os
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 # Use all CPUs for Numba (UMAP); set before importing umap
 def _cpu_count():
     """Number of available CPUs (respects cgroups/affinity on Linux)."""
