@@ -40,6 +40,12 @@ def _resolve(p: str) -> Path:
 
 TEMPORAL_STATS_PATH = _resolve(CONFIG["output"]["temporal_stats"])
 SNAPSHOTS_CSV_PATH = _resolve(CONFIG["output"]["cluster_trend_snapshots_1m_csv"])
+WEEKLY_RECENT_CSV_PATH = _resolve(
+    CONFIG["output"].get(
+        "cluster_trend_snapshots_1w_recent_csv",
+        "output/cluster_trend_snapshots_1W_recent.csv",
+    )
+)
 LEXICON_PATH = _resolve(CONFIG.get("theme_activation", {}).get("theme_lexicon", "theme_lexicon.yaml"))
 MODEL_PATH = _resolve(CONFIG.get("model_training", {}).get("output_model_path", "output/models/direction_model.pkl"))
 METRICS_PATH = _resolve(CONFIG.get("model_training", {}).get("output_metrics_path", "output/models/direction_model_metrics.json"))
@@ -242,7 +248,17 @@ def _sanitize(obj):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "model_loaded": model_bundle is not None, "themes": len(THEMES), "clusters": len(profiles_df)}
+    weekly_clusters = 0
+    if WEEKLY_RECENT_CSV_PATH.exists():
+        wdf = pd.read_csv(str(WEEKLY_RECENT_CSV_PATH), low_memory=False)
+        weekly_clusters = int(wdf["cluster"].nunique()) if "cluster" in wdf.columns else 0
+    return {
+        "status": "ok",
+        "model_loaded": model_bundle is not None,
+        "themes": len(THEMES),
+        "clusters": len(profiles_df),
+        "weekly_dense_clusters": weekly_clusters,
+    }
 
 
 @app.post("/api/predict")
@@ -387,6 +403,7 @@ def get_clusters():
             "id": f"cluster-{int(row['cluster'])}",
             "cluster": int(row["cluster"]),
             "cluster_label": str(row.get("cluster_label", f"Cluster {int(row['cluster'])}")),
+            "theme_name": CLUSTER_THEME_LABELS.get(int(row["cluster"]), ""),
             "size": int(row.get("post_count", 0)),
             "market_share": float(row.get("market_share", 0) * 100),
             "volume_pct_change": float(row.get("volume_pct_change", 0) * 100),
@@ -418,6 +435,29 @@ def get_snapshots():
             "volatility": float(row.get("volume_volatility", 0)),
         })
 
+    return _sanitize(snapshots)
+
+
+@app.get("/api/snapshots/weekly-recent")
+def get_weekly_recent_snapshots():
+    """Weekly snapshots for the last 12 months, dense clusters only."""
+    if not WEEKLY_RECENT_CSV_PATH.exists():
+        return []
+    df = pd.read_csv(str(WEEKLY_RECENT_CSV_PATH), low_memory=False)
+    snapshots = []
+    for _, row in df.iterrows():
+        cid = int(row["cluster"])
+        snapshots.append({
+            "cluster_id": f"cluster-{cid}",
+            "cluster_label": str(row.get("cluster_label", f"Cluster {cid}")),
+            "theme_name": CLUSTER_THEME_LABELS.get(cid, ""),
+            "time_window": str(row.get("time_window", "")),
+            "post_count": int(row.get("post_count", 0)),
+            "market_share": float(row.get("market_share", 0) * 100),
+            "momentum": float(row.get("momentum", 0)),
+            "volatility": float(row.get("volume_volatility", 0)),
+            "window_type": "1W",
+        })
     return _sanitize(snapshots)
 
 
