@@ -71,6 +71,7 @@ export interface ClusterInfo {
   id: string;
   cluster: number;
   cluster_label: string;
+  theme_name: string;
   size: number;
   market_share: number;
   volume_pct_change: number;
@@ -83,11 +84,13 @@ export interface ClusterInfo {
 export interface Snapshot {
   cluster_id: string;
   cluster_label: string;
+  theme_name?: string;
   time_window: string;
   post_count: number;
   market_share: number;
   momentum: number;
   volatility: number;
+  window_type?: "1M" | "1W";
 }
 
 export interface TemporalEvent {
@@ -155,4 +158,8 @@ export async function fetchModelMetrics(): Promise<Record<string, unknown>> {
 
 export async function fetchHealth(): Promise<{ status: string; model_loaded: boolean; themes: number; clusters: number }> {
   return request("/health");
+}
+
+export async function fetchWeeklySnapshots(): Promise<Snapshot[]> {
+  return request("/snapshots/weekly-recent");
 }
