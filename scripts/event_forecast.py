@@ -266,10 +266,11 @@ def estimate_event_direction(
     activation_threshold=0.03,
     per_theme_thresholds=None,
     llm_config=None,
+    theme_cluster_map=None,
 ):
     """
     Estimate likely direction and volatility for a new event.
-    Assumes theme id corresponds to cluster id.
+    Uses theme_cluster_map to resolve theme → cluster; falls back to theme id.
     """
     base_scores = score_event_against_lexicon(event_text, themes)
     llm_meta = {"enabled": False}
@@ -307,12 +308,19 @@ def estimate_event_direction(
         )
         if score < threshold:
             continue
-        profile = profile_by_cluster.get(tid)
+        # Resolve cluster via explicit map, fall back to tid
+        if theme_cluster_map and str(tid) in theme_cluster_map:
+            mapped_cluster_id = theme_cluster_map[str(tid)].get("cluster_id", tid)
+        else:
+            mapped_cluster_id = tid
+
+        profile = profile_by_cluster.get(mapped_cluster_id)
         if not profile:
             continue
         activated.append(
             {
                 "theme_id": tid,
+                "mapped_cluster_id": mapped_cluster_id,
                 "theme_name": theme.get("name", str(tid)),
                 "score": score,
                 "direction_score": float(profile["direction_score"]),

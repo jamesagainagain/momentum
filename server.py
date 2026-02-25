@@ -53,6 +53,19 @@ profiles_df = build_cluster_profiles(temporal_df)
 with open(LEXICON_PATH, encoding="utf-8") as f:
     THEMES = yaml.safe_load(f).get("themes", [])
 
+THEME_CLUSTER_MAP: dict = {}
+_theme_map_path = BASE / "output" / "theme_cluster_map.json"
+if _theme_map_path.exists():
+    with open(_theme_map_path, encoding="utf-8") as _f:
+        THEME_CLUSTER_MAP = json.load(_f)
+
+# Reverse: cluster_id (int) → theme_name (str) — used for label enrichment
+CLUSTER_THEME_LABELS: dict[int, str] = {
+    int(v["cluster_id"]): v["theme_name"]
+    for v in THEME_CLUSTER_MAP.values()
+    if v.get("cluster_id") is not None and v.get("theme_name")
+}
+
 model_bundle = None
 if MODEL_PATH.exists():
     try:
@@ -244,6 +257,7 @@ def predict(req: PredictRequest):
         activation_threshold=threshold,
         per_theme_thresholds=per_theme_thresholds,
         llm_config=LLM_CFG,
+        theme_cluster_map=THEME_CLUSTER_MAP,
     )
     prediction["event_text"] = req.event_text
     prediction["activation_threshold"] = threshold
