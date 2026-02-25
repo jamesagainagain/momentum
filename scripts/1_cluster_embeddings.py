@@ -55,7 +55,24 @@ def validate_inputs(embeddings_path, data_path, config, pbar=None):
     data = pd.read_csv(data_path, low_memory=False)
 
     if len(embeddings) != len(data):
-        raise ValueError(f"Mismatch: {len(embeddings)} embeddings vs {len(data)} rows")
+        # Try to recover using the index file written by preprocess_data.py
+        indices_path = data_path.replace(".csv", "_indices.npy")
+        if os.path.exists(indices_path):
+            indices = np.load(indices_path)
+            if len(indices) == len(data) and indices.max() < len(embeddings):
+                embeddings = embeddings[indices]
+                print(f"Sliced embeddings to {len(embeddings)} rows using {indices_path}")
+            else:
+                raise ValueError(
+                    f"Indices file {indices_path} has {len(indices)} entries "
+                    f"but data has {len(data)} rows or max index {indices.max()} "
+                    f">= embeddings size {len(embeddings)}"
+                )
+        else:
+            raise ValueError(
+                f"Mismatch: {len(embeddings)} embeddings vs {len(data)} rows. "
+                f"Run scripts/0_preprocess_data.py --force to regenerate {indices_path}"
+            )
 
     text_col = config['input']['text_column']
     ts_col = config['input']['timestamp_column']

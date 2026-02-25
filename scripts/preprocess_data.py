@@ -10,6 +10,7 @@ import argparse
 import json
 import os
 
+import numpy as np
 import pandas as pd
 import yaml
 
@@ -23,7 +24,10 @@ def _engagement_score(df, engagement_cols):
 
 
 def deduplicate_exact(df, text_col="text", author_col="Author", engagement_cols=None):
-    """Remove exact (text, author) duplicates, keeping highest-engagement row."""
+    """Remove exact (text, author) duplicates, keeping highest-engagement row.
+
+    Preserves the original DataFrame index so callers can track which rows survived.
+    """
     engagement_cols = engagement_cols or ["X Likes", "X Reposts", "likes", "shares"]
     df = df.copy()
     df["_eng"] = _engagement_score(df, engagement_cols)
@@ -31,11 +35,14 @@ def deduplicate_exact(df, text_col="text", author_col="Author", engagement_cols=
         df.sort_values("_eng", ascending=False)
         .drop_duplicates(subset=[text_col, author_col], keep="first")
     )
-    return deduped.drop(columns=["_eng"]).reset_index(drop=True)
+    return deduped.drop(columns=["_eng"])
 
 
 def cap_author_dominance(df, author_col="Author", max_share=0.05, engagement_cols=None):
-    """Cap any single author to at most max_share * total posts."""
+    """Cap any single author to at most max_share * total posts.
+
+    Preserves the original DataFrame index so callers can track which rows survived.
+    """
     engagement_cols = engagement_cols or ["X Likes", "X Reposts", "likes", "shares"]
     df = df.copy()
     df["_eng"] = _engagement_score(df, engagement_cols)
@@ -45,13 +52,18 @@ def cap_author_dominance(df, author_col="Author", max_share=0.05, engagement_col
         if len(group) > cap:
             group = group.nlargest(cap, "_eng", keep="first")
         parts.append(group)
-    return pd.concat(parts).drop(columns=["_eng"]).reset_index(drop=True)
+    return pd.concat(parts).drop(columns=["_eng"])
 
 
 def load_and_clean(df, text_col="text", author_col="Author",
                    timestamp_col="timestamp", max_author_share=0.05,
                    engagement_cols=None):
-    """Run full cleaning pipeline. Returns (cleaned_df, report_dict)."""
+    """Run full cleaning pipeline. Returns (cleaned_df, report_dict).
+
+    cleaned_df retains its original integer index (positions in the input df)
+    so callers can use it to slice a positionally-aligned array (e.g. embeddings).
+    Call .reset_index(drop=True) on the result if a clean 0-based index is needed.
+    """
     engagement_cols = engagement_cols or ["X Likes", "X Reposts", "likes", "shares"]
     rows_input = len(df)
     deduped = deduplicate_exact(df, text_col=text_col, author_col=author_col,
@@ -87,11 +99,12 @@ def main():
     def resolve(p):
         return p if os.path.isabs(p) else os.path.join(config_dir, p)
 
-    input_csv = resolve(config["input"]["data"])
+    input_csv = resolve(config["input"].get("raw_data") or config["input"]["data"])
     text_col = config["input"]["text_column"]
     ts_col = config["input"]["timestamp_column"]
     output_dir = resolve(config["output"]["dir"])
     out_csv = os.path.join(output_dir, "data_clean.csv")
+    out_indices = os.path.join(output_dir, "data_clean_indices.npy")
     out_report = os.path.join(output_dir, "preprocessing_report.json")
 
     if os.path.exists(out_csv) and not args.force:
@@ -109,7 +122,11 @@ def main():
 
     cleaned, report = load_and_clean(df, text_col=text_col, author_col=author_col,
                                      timestamp_col=ts_col, max_author_share=0.05)
-    cleaned.to_csv(out_csv, index=False)
+
+    kept_indices = cleaned.index.to_numpy()
+    np.save(out_indices, kept_indices)
+
+    cleaned.reset_index(drop=True).to_csv(out_csv, index=False)
     with open(out_report, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
 
@@ -119,6 +136,7 @@ def main():
     print(f"  Author cap removed:  {report['author_cap_removed']:,}")
     print(f"  Total removed:       {report['total_removed']:,} ({report['removal_pct']}%)")
     print(f"Saved to {out_csv}")
+    print(f"Kept indices saved to {out_indices} (used by script 1 to slice embeddings)")
 
 
 if __name__ == "__main__":

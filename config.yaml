@@ -3,6 +3,7 @@ max_cores: 0
 
 input:
   embeddings: "embeddings.npy"
+  raw_data: "clustered_data_labeled.csv"
   data: "output/data_clean.csv"
   text_column: "text"
   timestamp_column: "timestamp"
