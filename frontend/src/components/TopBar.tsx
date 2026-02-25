@@ -1,19 +1,35 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Calendar, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const timeWindows = ["Daily", "Weekly", "Monthly"] as const;
+const defaultTimeWindows = ["Daily", "Weekly", "Monthly"] as const;
 
 interface TopBarProps {
   title?: string;
+  /** Controlled: current time window (e.g. "Monthly" | "Weekly"). When set, TopBar acts in controlled mode. */
+  timeWindow?: string;
+  /** Called when user selects a time window. When provided with timeWindow, drives Index granularity. */
   onTimeWindowChange?: (window: string) => void;
+  /** Which buttons to show. Omit Daily when there is no daily data. */
+  timeWindowOptions?: readonly string[];
 }
 
-export function TopBar({ title = "Executive Dashboard", onTimeWindowChange }: TopBarProps) {
-  const [activeWindow, setActiveWindow] = useState<string>("Monthly");
+export function TopBar({
+  title = "Executive Dashboard",
+  timeWindow: controlledWindow,
+  onTimeWindowChange,
+  timeWindowOptions = defaultTimeWindows,
+}: TopBarProps) {
+  const [localWindow, setLocalWindow] = useState<string>("Monthly");
+  const isControlled = controlledWindow !== undefined;
+  const activeWindow = isControlled ? controlledWindow : localWindow;
+
+  useEffect(() => {
+    if (isControlled && controlledWindow) setLocalWindow(controlledWindow);
+  }, [isControlled, controlledWindow]);
 
   const handleChange = (w: string) => {
-    setActiveWindow(w);
+    if (!isControlled) setLocalWindow(w);
     onTimeWindowChange?.(w);
   };
 
@@ -23,7 +39,7 @@ export function TopBar({ title = "Executive Dashboard", onTimeWindowChange }: To
 
       <div className="flex items-center gap-3">
         <div className="flex items-center rounded border border-border overflow-hidden">
-          {timeWindows.map((w, i) => (
+          {timeWindowOptions.map((w, i) => (
             <button
               key={w}
               onClick={() => handleChange(w)}

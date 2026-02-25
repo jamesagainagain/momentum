@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,35 +6,35 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 220 14% 10%;
+    --background: 40 18% 98%;
+    --foreground: 220 18% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 220 14% 10%;
+    --card-foreground: 220 18% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 220 14% 10%;
-    --primary: 220 14% 10%;
+    --popover-foreground: 220 18% 12%;
+    --primary: 220 18% 12%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 10% 96%;
-    --secondary-foreground: 220 14% 10%;
-    --muted: 220 10% 96%;
-    --muted-foreground: 220 8% 46%;
-    --accent: 220 10% 94%;
-    --accent-foreground: 220 14% 10%;
+    --secondary: 40 14% 94%;
+    --secondary-foreground: 220 18% 12%;
+    --muted: 40 12% 93%;
+    --muted-foreground: 220 10% 42%;
+    --accent: 40 14% 92%;
+    --accent-foreground: 220 18% 12%;
     --destructive: 0 60% 50%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 8% 90%;
-    --input: 220 8% 90%;
-    --ring: 220 14% 10%;
-    --radius: 0.375rem;
+    --border: 40 12% 88%;
+    --input: 40 12% 88%;
+    --ring: 220 18% 12%;
+    --radius: 0.5rem;
 
-    --sidebar-background: 220 10% 98%;
-    --sidebar-foreground: 220 8% 46%;
-    --sidebar-primary: 220 14% 10%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 220 10% 38%;
+    --sidebar-primary: 220 18% 12%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 10% 94%;
-    --sidebar-accent-foreground: 220 14% 10%;
-    --sidebar-border: 220 8% 92%;
-    --sidebar-ring: 220 14% 10%;
+    --sidebar-accent: 40 14% 94%;
+    --sidebar-accent-foreground: 220 18% 12%;
+    --sidebar-border: 40 10% 90%;
+    --sidebar-ring: 220 18% 12%;
 
     /* Data viz — desaturated, functional */
     --viz-cyan: 200 30% 45%;
@@ -52,9 +52,9 @@
     --status-dormant: 220 6% 55%;
 
     /* Prediction colors */
-    --direction-up: 152 28% 40%;
-    --direction-down: 0 40% 50%;
-    --direction-flat: 30 35% 46%;
+    --direction-up: 152 28% 38%;
+    --direction-down: 0 42% 48%;
+    --direction-flat: 30 28% 44%;
   }
 }
 
@@ -65,7 +65,7 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'DM Sans', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -73,12 +73,16 @@
 
 @layer utilities {
   .font-mono-data {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
     font-feature-settings: 'tnum';
   }
 
+  .font-display {
+    font-family: 'Instrument Serif', Georgia, serif;
+  }
+
   .glass-card {
-    @apply bg-card border border-border rounded-md;
+    @apply bg-card border border-border rounded-lg shadow-sm;
   }
 
   .scrollbar-thin {

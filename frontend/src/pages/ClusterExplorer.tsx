@@ -159,6 +159,7 @@ const ClusterExplorer = () => {
                 <tr className="border-b border-border text-[9px] uppercase tracking-widest text-muted-foreground">
                   <th className="px-6 py-3 text-left w-8"></th>
                   <th className="px-3 py-3 text-left">Label</th>
+                  <th className="px-3 py-3 text-left">Theme</th>
                   <th className="px-3 py-3 text-right">Posts</th>
                   <th className="px-3 py-3 text-right cursor-pointer hover:text-foreground" onClick={() => toggleSort("market_share")}>
                     Mkt Share {sortKey === "market_share" && (sortDir === "desc" ? "\u2193" : "\u2191")}
@@ -168,7 +169,9 @@ const ClusterExplorer = () => {
                   <th className="px-3 py-3 text-right cursor-pointer hover:text-foreground" onClick={() => toggleSort("momentum")}>
                     Momentum {sortKey === "momentum" && (sortDir === "desc" ? "\u2193" : "\u2191")}
                   </th>
-                  <th className="px-3 py-3 text-center">State</th>
+                  <th className="px-3 py-3 text-center" title="Based on recent post volume change">
+                    Volume trend
+                  </th>
                   <th className="px-3 py-3 text-right cursor-pointer hover:text-foreground" onClick={() => toggleSort("anomaly_score")}>
                     Anomaly {sortKey === "anomaly_score" && (sortDir === "desc" ? "\u2193" : "\u2191")}
                   </th>
@@ -185,8 +188,15 @@ const ClusterExplorer = () => {
                         className="h-3.5 w-3.5 accent-foreground"
                       />
                     </td>
-                    <td className="px-3 py-2.5 cursor-pointer text-foreground hover:underline" onClick={() => setDrillCluster(c.id)}>
+                    <td
+                      className="px-3 py-2.5 cursor-pointer text-foreground hover:underline"
+                      onClick={() => setDrillCluster(c.id)}
+                      title={c.theme_name ? `Topic (from content). Theme: ${c.theme_name}` : "Topic label from cluster content"}
+                    >
                       {c.cluster_label}
+                    </td>
+                    <td className="px-3 py-2.5 text-muted-foreground text-[10px]">
+                      {c.theme_name || "—"}
                     </td>
                     <td className="px-3 py-2.5 text-right font-mono-data text-muted-foreground">{c.size}</td>
                     <td className="px-3 py-2.5 text-right font-mono-data text-foreground">{c.market_share?.toFixed(2)}%</td>

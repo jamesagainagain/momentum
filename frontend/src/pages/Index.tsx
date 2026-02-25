@@ -129,8 +129,19 @@ const Index = () => {
 
   const totalClusters = displayClusters.length || 47;
 
+  const topBarTimeWindow = granularity === "monthly" ? "Monthly" : "Weekly";
+  const handleTopBarTimeWindowChange = (w: string) => {
+    if (w === "Monthly") setGranularity("monthly");
+    else if (w === "Weekly") setGranularity("weekly");
+  };
+
   return (
-    <DashboardLayout title="Executive Dashboard">
+    <DashboardLayout
+      title="Executive Dashboard"
+      timeWindow={topBarTimeWindow}
+      onTimeWindowChange={handleTopBarTimeWindowChange}
+      timeWindowOptions={["Weekly", "Monthly"]}
+    >
       <div className="space-y-8">
         <KPICards />
 
@@ -199,8 +210,12 @@ const Index = () => {
                     ? "bg-foreground text-background border-foreground"
                     : "text-muted-foreground border-border hover:text-foreground"
                 )}
+                title={c.theme_name ? `${c.label} · Theme: ${c.theme_name}` : c.label}
               >
-                {c.theme_name || c.label}
+                {c.label}
+                {c.theme_name ? (
+                  <span className="ml-1 opacity-70 text-[9px]">· {c.theme_name}</span>
+                ) : null}
               </button>
             ))}
           </div>
@@ -210,28 +225,34 @@ const Index = () => {
               <XAxis dataKey="time_window" tick={{ fontSize: 10, fill: "hsl(220, 8%, 46%)" }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 10, fill: "hsl(220, 8%, 46%)" }} axisLine={false} tickLine={false} width={40} />
               <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: "hsl(220, 14%, 10%)" }} />
-              {activeClusterIds.map((id, i) => (
-                <Area
-                  key={id}
-                  type="monotone"
-                  dataKey={id}
-                  name={activeClusterOptions.find((c) => c.id === id)?.theme_name || activeClusterOptions.find((c) => c.id === id)?.label || id}
-                  stroke={lineColors[i % lineColors.length]}
-                  strokeWidth={1.5}
-                  fill={lineColors[i % lineColors.length]}
-                  fillOpacity={0.06}
-                />
-              ))}
+              {activeClusterIds.map((id, i) => {
+                const opt = activeClusterOptions.find((c) => c.id === id);
+                return (
+                  <Area
+                    key={id}
+                    type="monotone"
+                    dataKey={id}
+                    name={opt ? (opt.theme_name ? `${opt.label} · ${opt.theme_name}` : opt.label) : id}
+                    stroke={lineColors[i % lineColors.length]}
+                    strokeWidth={1.5}
+                    fill={lineColors[i % lineColors.length]}
+                    fillOpacity={0.06}
+                  />
+                );
+              })}
             </AreaChart>
           </ResponsiveContainer>
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           <div className="glass-card px-6 py-6">
-            <h3 className="text-[11px] font-semibold text-foreground uppercase tracking-[0.1em] mb-6">Lifecycle Distribution</h3>
+            <h3 className="text-[11px] font-semibold text-foreground uppercase tracking-[0.1em] mb-1">Lifecycle Distribution</h3>
+            <p className="text-[10px] text-muted-foreground mb-6" title="Based on recent post volume change">
+              Volume trend
+            </p>
             <div className="space-y-4">
               {displayLifecycle.map((item) => (
-                <div key={item.state} className="flex items-center gap-3">
+                <div key={item.state} className="flex items-center gap-3" title="Based on recent post volume change">
                   <span className="w-16 text-[10px] text-muted-foreground">{item.state}</span>
                   <div className="flex-1 h-2.5 rounded-sm bg-accent overflow-hidden">
                     <div

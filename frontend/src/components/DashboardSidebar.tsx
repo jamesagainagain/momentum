@@ -7,13 +7,14 @@ import {
   FlaskConical,
   ChevronLeft,
   ChevronRight,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { title: "Dashboard", path: "/", icon: LayoutDashboard },
-  { title: "Clusters", path: "/clusters", icon: Search },
-  { title: "News Chat", path: "/news-chat", icon: MessageSquare },
+  { title: "Predict", path: "/", icon: MessageSquare },
+  { title: "Trends", path: "/dashboard", icon: LayoutDashboard },
+  { title: "Topics", path: "/clusters", icon: Search },
   { title: "Scenarios", path: "/scenarios", icon: FlaskConical },
 ];
 
@@ -27,20 +28,20 @@ export function DashboardSidebar() {
         collapsed ? "w-[56px]" : "w-[200px]"
       )}
     >
-      {/* Logo */}
+      {/* Logo / brand */}
       <div className="flex h-14 items-center gap-2.5 border-b border-border px-4">
-        <div className="flex h-6 w-6 items-center justify-center rounded bg-foreground shrink-0">
-          <span className="text-[9px] font-bold text-background tracking-tight">IA</span>
+        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-foreground shrink-0">
+          <Sparkles className="h-[14px] w-[14px] text-background" strokeWidth={2} />
         </div>
         {!collapsed && (
-          <span className="text-[13px] font-semibold tracking-tight text-foreground">
-            InsightAgent
+          <span className="font-display text-[15px] font-semibold tracking-tight text-foreground">
+            Momentum
           </span>
         )}
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 space-y-1 px-2.5 pt-6">
+      {/* Nav — Predict first and visually primary */}
+      <nav className="flex-1 space-y-0.5 px-2.5 pt-6">
         {navItems.map((item) => (
           <NavLink
             key={item.path}
@@ -48,9 +49,9 @@ export function DashboardSidebar() {
             end={item.path === "/"}
             className={({ isActive }) =>
               cn(
-                "flex items-center gap-3 rounded px-3 py-2.5 text-[12px] font-medium transition-colors",
+                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[12px] font-medium transition-colors",
                 isActive
-                  ? "bg-foreground text-background"
+                  ? "bg-foreground text-background shadow-sm"
                   : "text-muted-foreground hover:bg-accent hover:text-foreground"
               )
             }

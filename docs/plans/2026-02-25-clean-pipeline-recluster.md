@@ -10,6 +10,8 @@
 
 **M2 Pro note:** 12 cores available. All scripts set `n_jobs=-1` or `NUMBA_NUM_THREADS=12` explicitly. UMAP must be run from your Mac Terminal (not Cursor's sandbox) due to Numba cache restrictions.
 
+**Research & citations:** Design choices in this plan (preprocessing, HDBSCAN clustering, temporal analysis, weekly recency, event detection) are backed by research and cited in [docs/plans/2026-02-25-analysis-research-citations.md](docs/plans/2026-02-25-analysis-research-citations.md).
+
 ---
 
 ## Task 1: Write preprocessing script (`scripts/0_preprocess_data.py`)
@@ -24,6 +26,8 @@
 3. Removes near-duplicate posts: for each author, any text with >85% character overlap to another of their posts in the same month (catches same article with different URLs)
 4. Caps single-author dominance: if one author contributes >5% of total posts, cap them at `floor(0.05 * total)` posts, keeping their most-engaged posts (by `X Likes + X Reposts`)
 5. Saves cleaned CSV to `output/data_clean.csv` and a quality report to `output/preprocessing_report.json`
+
+*Rationale and citations:* See [analysis-research-citations](docs/plans/2026-02-25-analysis-research-citations.md) — Preprocessing (deduplication, author capping).
 
 **Step 1: Write the failing tests**
 
@@ -1179,6 +1183,8 @@ Total time: ~20–30 minutes (dominated by UMAP in Script 1).
 - Full dataset (2016–2026): median 0 posts/cluster/week — 86% of windows are zero. Useless for stats.
 - Recent 12 months (2025–2026): ~980 posts/month total, ~11 posts/cluster/week for active clusters. Borderline but workable.
 - Gate: only show weekly data for a cluster when ≥50% of its weekly windows in the recency period have ≥3 posts. Otherwise fall back to monthly silently.
+
+*Supporting literature:* See [analysis-research-citations](docs/plans/2026-02-25-analysis-research-citations.md) — Temporal topic analysis and event detection.
 
 ---
 

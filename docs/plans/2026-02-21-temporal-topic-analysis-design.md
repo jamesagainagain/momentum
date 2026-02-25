@@ -16,6 +16,10 @@ We're building a modular Python pipeline to:
 
 **Architecture:** 3 standalone Python scripts + config file + cached Parquet outputs
 
+### Research & citations
+
+The clustering (HDBSCAN, UMAP), temporal metrics, lifecycle classification, and event detection methodology used in this pipeline are supported by published work. A dedicated document with full citations and relevance notes is maintained at [docs/plans/2026-02-25-analysis-research-citations.md](docs/plans/2026-02-25-analysis-research-citations.md).
+
 ---
 
 ## 1. Architecture & Data Flow
@@ -116,6 +120,8 @@ llm:
 4. Create automatic cluster labels (top TF-IDF terms per cluster)
 5. Save results to `output/clusters.parquet`
 
+HDBSCAN and UMAP are widely used for embedding-based topic discovery; see research addendum for citations.
+
 ### Core Algorithm
 ```python
 def cluster_embeddings(embeddings, config):
@@ -209,6 +215,8 @@ def detect_events(df, spike_threshold=2.0):
     )
     return events
 ```
+
+Lifecycle and event detection are informed by temporal topic and anomaly-detection literature; see research addendum.
 
 ### Output Schema
 
