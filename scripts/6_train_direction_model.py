@@ -632,7 +632,7 @@ def main():
             for train_times, test_times in folds
         ]
         _progress(cv_step, total_cv_steps, f"ε={epsilon}", t_start)
-        raw_results = joblib.Parallel(n_jobs=cv_n_jobs, prefer="processes")(
+        raw_results = joblib.Parallel(n_jobs=cv_n_jobs, prefer="threads", backend="threading")(
             joblib.delayed(_evaluate_fold)(fd) for fd in fold_inputs
         )
         fold_scores = [r for r in raw_results if r is not None]
@@ -961,6 +961,27 @@ def main():
                 f"Train F1 ({train_eval['macro_f1']:.2%}) and test F1 "
                 f"({results[best_name]['macro_f1']:.2%}) are within {train_test_gap:.2%}."
             )
+    elif best_name in ("soft_voting_ensemble", "stacking_ensemble") and best_cv_macro_f1 is not None:
+        # Ensemble: no train F1; use test vs CV (temporal stability) for verdict
+        holdout_cv_gap = results[best_name]["macro_f1"] - best_cv_macro_f1
+        if holdout_cv_gap > 0.10:
+            overfit_diagnosis["verdict"] = "ensemble_unstable_vs_cv"
+            overfit_diagnosis["detail"] = (
+                f"{best_name}: train F1 not computed. Holdout test F1 ({results[best_name]['macro_f1']:.2%}) "
+                f"exceeds walk-forward CV F1 ({best_cv_macro_f1:.2%}) by {holdout_cv_gap:.2%}. "
+                "May not generalise across time."
+            )
+        else:
+            overfit_diagnosis["verdict"] = "ensemble_stable_vs_cv"
+            overfit_diagnosis["detail"] = (
+                f"{best_name}: train F1 not computed. Test F1 ({results[best_name]['macro_f1']:.2%}) "
+                f"and CV F1 ({best_cv_macro_f1:.2%}) are within {holdout_cv_gap:.2%} — stable across time."
+            )
+    elif best_name in ("soft_voting_ensemble", "stacking_ensemble"):
+        overfit_diagnosis["verdict"] = "ensemble_no_cv_compare"
+        overfit_diagnosis["detail"] = (
+            f"{best_name}: train F1 not computed; no walk-forward CV for this model to compare."
+        )
 
     if best_cv_macro_f1 is not None:
         holdout_cv_gap = results[best_name]["macro_f1"] - best_cv_macro_f1

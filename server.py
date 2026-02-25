@@ -18,6 +18,7 @@ import yaml
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 load_dotenv()
@@ -276,6 +277,12 @@ def _sanitize(obj):
         v = float(obj)
         return None if (math.isnan(v) or math.isinf(v)) else v
     return obj
+
+
+@app.get("/")
+def root():
+    """Redirect root to API docs."""
+    return RedirectResponse(url="/docs", status_code=302)
 
 
 @app.get("/api/health")
