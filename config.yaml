@@ -29,6 +29,10 @@ umap:
 
 temporal:
   default_window: "1M"
+  recency_window: "1W"
+  recency_lookback_months: 12
+  recency_min_posts_per_window: 3
+  recency_min_density: 0.5
 
 output:
   dir: "output"
@@ -37,6 +41,8 @@ output:
   temporal_events: "output/temporal_events.parquet"
   cluster_trend_snapshots_1m: "output/cluster_trend_snapshots_1M.parquet"
   cluster_trend_snapshots_1m_csv: "output/cluster_trend_snapshots_1M.csv"
+  cluster_trend_snapshots_1w_recent: "output/cluster_trend_snapshots_1W_recent.parquet"
+  cluster_trend_snapshots_1w_recent_csv: "output/cluster_trend_snapshots_1W_recent.csv"
   viz_dir: "output/visualizations"
 
 llm:

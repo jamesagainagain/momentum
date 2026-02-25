@@ -11,9 +11,13 @@ import argparse
 import os
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import numpy as np
 import pandas as pd
 import yaml
+
+from scripts.temporal_recency import build_weekly_recency_snapshots
 
 
 def load_config(config_path):
@@ -241,6 +245,27 @@ def main():
     lifecycle_counts = temporal_df.groupby('cluster')['lifecycle_state'].first().value_counts()
     print("\nLifecycle distribution:")
     print(lifecycle_counts.to_string())
+
+    # --- Weekly recency snapshot ---
+    recency_cfg = config.get("temporal", {})
+    weekly_recency = build_weekly_recency_snapshots(
+        df,
+        lookback_months=int(recency_cfg.get("recency_lookback_months", 12)),
+        min_posts=int(recency_cfg.get("recency_min_posts_per_window", 3)),
+        min_density=float(recency_cfg.get("recency_min_density", 0.5)),
+    )
+    weekly_recency_parquet = resolve(
+        config["output"].get("cluster_trend_snapshots_1w_recent",
+                             "output/cluster_trend_snapshots_1W_recent.parquet")
+    )
+    weekly_recency_csv = resolve(
+        config["output"].get("cluster_trend_snapshots_1w_recent_csv",
+                             "output/cluster_trend_snapshots_1W_recent.csv")
+    )
+    weekly_recency.to_parquet(weekly_recency_parquet, index=False)
+    weekly_recency.to_csv(weekly_recency_csv, index=False)
+    print(f"Saved weekly recency snapshots ({len(weekly_recency)} rows, "
+          f"{weekly_recency['cluster'].nunique()} dense clusters) to {weekly_recency_parquet}")
 
 
 if __name__ == '__main__':
