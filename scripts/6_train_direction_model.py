@@ -86,6 +86,7 @@ def model_candidates(model_names, random_state):
     if "random_forest" in names or "rf" in names:
         out["random_forest"] = RandomForestClassifier(
             n_estimators=300,
+            n_jobs=-1,
             random_state=random_state,
             class_weight="balanced_subsample",
             min_samples_leaf=1,
@@ -103,6 +104,7 @@ def model_candidates(model_names, random_state):
             max_depth=8,
             learning_rate=0.05,
             max_iter=400,
+            n_jobs=-1,
             random_state=random_state,
         )
     if "xgboost" in names or "xgb" in names:
@@ -119,6 +121,7 @@ def model_candidates(model_names, random_state):
                 colsample_bytree=0.9,
                 random_state=random_state,
                 eval_metric="mlogloss",
+                nthread=-1,
             )
         except Exception as exc:
             skipped["xgboost"] = str(exc)
@@ -132,6 +135,7 @@ def model_candidates(model_names, random_state):
                 n_estimators=220,
                 learning_rate=0.05,
                 random_state=random_state,
+                n_jobs=-1,
                 verbosity=-1,
             )
         except Exception as exc:
