@@ -129,19 +129,8 @@ const Index = () => {
 
   const totalClusters = displayClusters.length || 47;
 
-  const topBarTimeWindow = granularity === "monthly" ? "Monthly" : "Weekly";
-  const handleTopBarTimeWindowChange = (w: string) => {
-    if (w === "Monthly") setGranularity("monthly");
-    else if (w === "Weekly") setGranularity("weekly");
-  };
-
   return (
-    <DashboardLayout
-      title="Executive Dashboard"
-      timeWindow={topBarTimeWindow}
-      onTimeWindowChange={handleTopBarTimeWindowChange}
-      timeWindowOptions={["Weekly", "Monthly"]}
-    >
+    <DashboardLayout title="Trends">
       <div className="space-y-8">
         <KPICards />
 

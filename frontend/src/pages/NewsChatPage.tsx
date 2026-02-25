@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Send, ArrowUpRight, ArrowDownRight, Minus, Clock, TrendingUp,
   BarChart3, AlertTriangle, Loader2, ChevronDown, ChevronUp,
@@ -8,7 +8,6 @@ import {
   ResponsiveContainer, Cell, ReferenceLine,
 } from "recharts";
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { LiquidGlassCanvas } from "@/components/LiquidGlassCanvas";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { predictEvent, chatAnalysis, type PredictionResponse } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -322,36 +321,6 @@ function PredictionCard({ entry, index }: { entry: ChatEntry; index: number }) {
 
 /* ── Page ──────────────────────────────────────────── */
 
-function HeroGlassBackground() {
-  const ref = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ width: 0, height: 360 });
-
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const { width, height } = entries[0]?.contentRect ?? { width: 0, height: 360 };
-      setSize({ width: Math.round(width), height: Math.round(height) });
-    });
-    ro.observe(el);
-    setSize({ width: el.clientWidth, height: el.clientHeight });
-    return () => ro.disconnect();
-  }, []);
-
-  return (
-    <div ref={ref} className="absolute inset-0">
-      {size.width > 0 && (
-        <LiquidGlassCanvas
-          width={size.width}
-          height={size.height}
-          className="absolute inset-0 w-full h-full"
-          interactive
-        />
-      )}
-    </div>
-  );
-}
-
 const EXAMPLES = [
   "Google launches new Gemini robotics model",
   "Fed announces surprise rate hike",
@@ -422,27 +391,45 @@ const NewsChatPage = () => {
       <div className="flex flex-col min-h-[calc(100vh-3.5rem)] max-w-3xl mx-auto">
         <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin px-1">
           {history.length === 0 && !loading && (
-            <div className="pt-8 pb-12">
-              <div className="relative w-full h-[360px] rounded-2xl overflow-hidden">
-                <HeroGlassBackground />
-                <div className="absolute inset-0 z-10 flex flex-col justify-center px-10">
-                  <h1 className="font-display text-4xl font-normal text-foreground tracking-tight">
-                    What happens next?
-                  </h1>
-                  <p className="mt-4 text-[15px] text-muted-foreground leading-relaxed max-w-lg">
-                    Enter a news event or headline. We predict how it will move social and topic trends — and explain why.
-                  </p>
-                  <div className="mt-10 flex flex-wrap gap-2">
-                    {EXAMPLES.map((ex) => (
-                      <button
-                        key={ex}
-                        onClick={() => setInput(ex)}
-                        className="px-4 py-2.5 rounded-xl border border-border text-[12px] text-muted-foreground hover:text-foreground hover:bg-accent/50 hover:border-foreground/20 transition-all"
-                      >
-                        {ex}
-                      </button>
-                    ))}
-                  </div>
+            <div className="pt-12 pb-16">
+              <div className="mx-auto max-w-2xl rounded-[1.25rem] glass-panel p-8 shadow-lg">
+                <h1 className="font-display text-3xl font-semibold text-foreground tracking-tight">
+                  What happens next?
+                </h1>
+                <p className="mt-3 text-[15px] text-muted-foreground leading-relaxed">
+                  Enter a news event or headline. We predict how it will move social and topic trends — and explain why.
+                </p>
+                <div className="mt-8 flex items-center gap-3 rounded-2xl border border-border bg-background/60 px-4 py-3 shadow-sm focus-within:border-foreground/25 focus-within:ring-2 focus-within:ring-foreground/10 transition-all">
+                  <input
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+                    placeholder="Paste a headline or describe a news event…"
+                    className="flex-1 bg-transparent text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none min-h-[40px]"
+                  />
+                  <button
+                    onClick={handleSubmit}
+                    disabled={!input.trim() || loading}
+                    className={cn(
+                      "flex items-center justify-center h-10 w-10 rounded-xl transition-all shrink-0",
+                      input.trim()
+                        ? "bg-foreground text-background hover:opacity-90"
+                        : "bg-muted text-muted-foreground cursor-not-allowed"
+                    )}
+                  >
+                    <Send className="h-4 w-4" strokeWidth={1.75} />
+                  </button>
+                </div>
+                <div className="mt-6 flex flex-wrap gap-2">
+                  {EXAMPLES.map((ex) => (
+                    <button
+                      key={ex}
+                      onClick={() => setInput(ex)}
+                      className="rounded-xl border border-border/80 bg-background/50 px-4 py-2.5 text-[13px] text-muted-foreground shadow-sm backdrop-blur-sm hover:border-foreground/20 hover:text-foreground hover:bg-background/70 transition-all"
+                    >
+                      {ex}
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
@@ -481,35 +468,37 @@ const NewsChatPage = () => {
           )}
         </div>
 
-        {/* Input */}
-        <div className="sticky bottom-0 pt-6 pb-8 bg-background/95 backdrop-blur border-t border-border">
-          <div className="flex items-center gap-3 rounded-2xl border-2 border-border bg-card px-5 py-3.5 shadow-sm focus-within:border-foreground/30 focus-within:ring-2 focus-within:ring-foreground/10 transition-all">
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-              placeholder="Paste a headline or describe a news event…"
-              className="flex-1 bg-transparent text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none min-h-[44px]"
-            />
-            <button
-              onClick={handleSubmit}
-              disabled={!input.trim() || loading}
-              className={cn(
-                "flex items-center justify-center h-11 w-11 rounded-xl transition-all shrink-0",
-                input.trim() && !loading
-                  ? "bg-foreground text-background hover:opacity-90"
-                  : "bg-accent text-muted-foreground cursor-not-allowed"
-              )}
-            >
-              {loading
-                ? <Loader2 className="h-5 w-5 animate-spin" strokeWidth={1.75} />
-                : <Send className="h-5 w-5" strokeWidth={1.75} />}
-            </button>
+        {/* Sticky input — only when there's history or loading */}
+        {(history.length > 0 || loading) && (
+          <div className="sticky bottom-0 pt-6 pb-8 bg-background/95 backdrop-blur border-t border-border">
+            <div className="flex items-center gap-3 rounded-2xl border-2 border-border bg-card px-5 py-3.5 shadow-sm focus-within:border-foreground/30 focus-within:ring-2 focus-within:ring-foreground/10 transition-all">
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+                placeholder="Paste a headline or describe a news event…"
+                className="flex-1 bg-transparent text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none min-h-[44px]"
+              />
+              <button
+                onClick={handleSubmit}
+                disabled={!input.trim() || loading}
+                className={cn(
+                  "flex items-center justify-center h-11 w-11 rounded-xl transition-all shrink-0",
+                  input.trim() && !loading
+                    ? "bg-foreground text-background hover:opacity-90"
+                    : "bg-accent text-muted-foreground cursor-not-allowed"
+                )}
+              >
+                {loading
+                  ? <Loader2 className="h-5 w-5 animate-spin" strokeWidth={1.75} />
+                  : <Send className="h-5 w-5" strokeWidth={1.75} />}
+              </button>
+            </div>
+            <p className="mt-2.5 text-[10px] text-muted-foreground text-center">
+              {history.length} prediction{history.length !== 1 ? "s" : ""} this session
+            </p>
           </div>
-          <p className="mt-2.5 text-[10px] text-muted-foreground text-center">
-            {history.length} prediction{history.length !== 1 ? "s" : ""} this session
-          </p>
-        </div>
+        )}
       </div>
     </DashboardLayout>
   );
