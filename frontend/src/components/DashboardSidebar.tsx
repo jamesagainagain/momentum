@@ -25,13 +25,13 @@ export function DashboardSidebar() {
     <aside
       className={cn(
         "flex flex-col border-r border-border glass-panel transition-all duration-200",
-        collapsed ? "w-[56px]" : "w-[200px]"
+        collapsed ? "w-[4.5rem]" : "w-[14rem]"
       )}
     >
-      {/* Logo / brand */}
-      <div className="flex h-14 items-center gap-2.5 border-b border-border px-4">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-foreground shrink-0">
-          <Sparkles className="h-[14px] w-[14px] text-background" strokeWidth={2} />
+      {/* Logo / brand — 8px grid */}
+      <div className="flex h-16 items-center gap-3 border-b border-border px-5">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-foreground shrink-0">
+          <Sparkles className="h-4 w-4 text-background" strokeWidth={2} />
         </div>
         {!collapsed && (
           <span className="font-display text-[15px] font-semibold tracking-tight text-foreground">
@@ -40,8 +40,8 @@ export function DashboardSidebar() {
         )}
       </div>
 
-      {/* Nav — Predict first and visually primary */}
-      <nav className="flex-1 space-y-0.5 px-2.5 pt-6">
+      {/* Nav — comfortable touch targets, 12px vertical rhythm */}
+      <nav className="flex-1 space-y-0.5 px-3 pt-8">
         {navItems.map((item) => (
           <NavLink
             key={item.path}
@@ -49,14 +49,14 @@ export function DashboardSidebar() {
             end={item.path === "/"}
             className={({ isActive }) =>
               cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[12px] font-medium transition-colors",
+                "flex items-center gap-3 rounded-lg px-3 py-3 text-[13px] font-medium transition-colors min-h-[2.75rem]",
                 isActive
                   ? "bg-foreground text-background shadow-sm"
                   : "text-muted-foreground hover:bg-accent hover:text-foreground"
               )
             }
           >
-            <item.icon className="h-[15px] w-[15px] shrink-0" strokeWidth={1.75} />
+            <item.icon className="h-4 w-4 shrink-0" strokeWidth={1.75} />
             {!collapsed && <span>{item.title}</span>}
           </NavLink>
         ))}
@@ -65,9 +65,9 @@ export function DashboardSidebar() {
       {/* Collapse */}
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="flex h-12 items-center justify-center border-t border-border text-muted-foreground hover:text-foreground transition-colors"
+        className="flex h-14 items-center justify-center border-t border-border text-muted-foreground hover:text-foreground transition-colors"
       >
-        {collapsed ? <ChevronRight className="h-[14px] w-[14px]" strokeWidth={1.75} /> : <ChevronLeft className="h-[14px] w-[14px]" strokeWidth={1.75} />}
+        {collapsed ? <ChevronRight className="h-4 w-4" strokeWidth={1.75} /> : <ChevronLeft className="h-4 w-4" strokeWidth={1.75} />}
       </button>
     </aside>
   );

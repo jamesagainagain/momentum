@@ -11,11 +11,11 @@ export function TopBar({ title }: TopBarProps) {
   return (
     <header
       className={cn(
-        "flex h-12 shrink-0 items-center border-b border-border px-6 glass-panel",
+        "flex h-14 shrink-0 items-center border-b border-border glass-panel",
         "text-[11px] font-medium text-muted-foreground uppercase tracking-[0.12em]"
       )}
     >
-      {title}
+      <div className="mx-auto w-full max-w-3xl px-page-x">{title}</div>
     </header>
   );
 }

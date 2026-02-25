@@ -28,6 +28,17 @@
     --ring: 14 60% 59%;
     --radius: 0.625rem;
 
+    /* 8px-base spacing scale (high-end UI) */
+    --space-page-x: 2.5rem;   /* 40px main content horizontal */
+    --space-page-y: 2.5rem;   /* 40px main content vertical */
+    --space-section: 2rem;    /* 32px between sections */
+    --space-block: 1.5rem;    /* 24px between related blocks */
+    --space-element: 1rem;    /* 16px between elements */
+    --space-tight: 0.75rem;   /* 12px inline / dense */
+    --space-inline: 0.5rem;   /* 8px icon-text, chip gap */
+    --touch-min: 2.75rem;     /* 44px min touch target */
+    --input-height: 3.5rem;   /* 56px input height */
+
     --glass-bg: 40 20% 99%;
 
     --sidebar-background: 40 20% 99%;

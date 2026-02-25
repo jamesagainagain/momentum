@@ -389,43 +389,43 @@ const NewsChatPage = () => {
   return (
     <DashboardLayout title="Predict">
       <div className="flex flex-col min-h-[calc(100vh-3.5rem)] max-w-3xl mx-auto">
-        <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin px-1">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin">
           {history.length === 0 && !loading && (
-            <div className="pt-12 pb-16">
-              <div className="mx-auto max-w-2xl rounded-[1.25rem] glass-panel p-8 shadow-lg">
-                <h1 className="font-display text-3xl font-semibold text-foreground tracking-tight">
+            <div className="pt-20 pb-28">
+              <div className="mx-auto max-w-2xl rounded-2xl glass-panel p-12 shadow-lg">
+                <h1 className="font-display text-[2rem] leading-tight font-semibold text-foreground tracking-tight">
                   What happens next?
                 </h1>
-                <p className="mt-3 text-[15px] text-muted-foreground leading-relaxed">
+                <p className="mt-5 text-[1.0625rem] text-muted-foreground leading-relaxed max-w-xl">
                   Enter a news event or headline. We predict how it will move social and topic trends — and explain why.
                 </p>
-                <div className="mt-8 flex items-center gap-3 rounded-2xl border border-border bg-background/60 px-4 py-3 shadow-sm focus-within:border-foreground/25 focus-within:ring-2 focus-within:ring-foreground/10 transition-all">
+                <div className="mt-10 flex items-center gap-4 rounded-xl border border-border bg-background/60 px-5 py-1 shadow-sm focus-within:border-foreground/25 focus-within:ring-2 focus-within:ring-foreground/10 transition-all min-h-[3.5rem]">
                   <input
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
                     placeholder="Paste a headline or describe a news event…"
-                    className="flex-1 bg-transparent text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none min-h-[40px]"
+                    className="flex-1 bg-transparent text-[15px] text-foreground placeholder:text-muted-foreground focus:outline-none min-h-[3rem] py-3"
                   />
                   <button
                     onClick={handleSubmit}
                     disabled={!input.trim() || loading}
                     className={cn(
-                      "flex items-center justify-center h-10 w-10 rounded-xl transition-all shrink-0",
+                      "flex items-center justify-center h-11 w-11 rounded-xl transition-all shrink-0",
                       input.trim()
                         ? "bg-foreground text-background hover:opacity-90"
                         : "bg-muted text-muted-foreground cursor-not-allowed"
                     )}
                   >
-                    <Send className="h-4 w-4" strokeWidth={1.75} />
+                    <Send className="h-5 w-5" strokeWidth={1.75} />
                   </button>
                 </div>
-                <div className="mt-6 flex flex-wrap gap-2">
+                <div className="mt-8 flex flex-wrap gap-3">
                   {EXAMPLES.map((ex) => (
                     <button
                       key={ex}
                       onClick={() => setInput(ex)}
-                      className="rounded-xl border border-border/80 bg-background/50 px-4 py-2.5 text-[13px] text-muted-foreground shadow-sm backdrop-blur-sm hover:border-foreground/20 hover:text-foreground hover:bg-background/70 transition-all"
+                      className="rounded-xl border border-border/80 bg-background/50 px-5 py-3 text-[13px] text-muted-foreground shadow-sm backdrop-blur-sm hover:border-foreground/20 hover:text-foreground hover:bg-background/70 transition-all min-h-[2.75rem]"
                     >
                       {ex}
                     </button>
@@ -436,10 +436,10 @@ const NewsChatPage = () => {
           )}
 
           {history.map((entry, i) => (
-            <div key={entry.id} className="space-y-5 pb-10">
+            <div key={entry.id} className="space-y-6 pb-12">
               <div className="flex justify-end">
                 <div className="rounded-2xl bg-foreground/5 border border-border px-6 py-4 max-w-xl">
-                  <p className="text-[14px] text-foreground leading-snug">{entry.event_text}</p>
+                  <p className="text-[15px] text-foreground leading-snug">{entry.event_text}</p>
                 </div>
               </div>
               <PredictionCard entry={entry} index={i} />
@@ -447,13 +447,13 @@ const NewsChatPage = () => {
           ))}
 
           {loading && (
-            <div className="rounded-2xl border border-border bg-card/80 backdrop-blur px-8 py-6 flex items-center gap-4">
+            <div className="rounded-2xl border border-border bg-card/80 backdrop-blur px-8 py-6 flex items-center gap-5">
               <Loader2 className="h-6 w-6 text-muted-foreground animate-spin shrink-0" strokeWidth={1.75} />
               <div>
-                <p className="text-[13px] font-medium text-foreground">
+                <p className="text-[14px] font-medium text-foreground">
                   {stage === "predicting" ? "Predicting impact\u2026" : "Writing analysis\u2026"}
                 </p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
+                <p className="text-[12px] text-muted-foreground mt-1">
                   {stage === "predicting" ? "Running model on your event" : "Generating trend insights"}
                 </p>
               </div>
@@ -461,42 +461,44 @@ const NewsChatPage = () => {
           )}
 
           {error && (
-            <div className="rounded-2xl border border-viz-rose/30 bg-viz-rose/5 px-6 py-4">
-              <p className="text-[12px] text-viz-rose font-medium">Something went wrong</p>
-              <p className="text-[11px] text-muted-foreground mt-1">{error}</p>
+            <div className="rounded-2xl border border-viz-rose/30 bg-viz-rose/5 px-6 py-5">
+              <p className="text-[13px] text-viz-rose font-medium">Something went wrong</p>
+              <p className="text-[12px] text-muted-foreground mt-2">{error}</p>
             </div>
           )}
         </div>
 
         {/* Sticky input — only when there's history or loading */}
         {(history.length > 0 || loading) && (
-          <div className="sticky bottom-0 pt-6 pb-8 bg-background/95 backdrop-blur border-t border-border">
-            <div className="flex items-center gap-3 rounded-2xl border-2 border-border bg-card px-5 py-3.5 shadow-sm focus-within:border-foreground/30 focus-within:ring-2 focus-within:ring-foreground/10 transition-all">
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                placeholder="Paste a headline or describe a news event…"
-                className="flex-1 bg-transparent text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none min-h-[44px]"
-              />
-              <button
-                onClick={handleSubmit}
-                disabled={!input.trim() || loading}
-                className={cn(
-                  "flex items-center justify-center h-11 w-11 rounded-xl transition-all shrink-0",
-                  input.trim() && !loading
-                    ? "bg-foreground text-background hover:opacity-90"
-                    : "bg-accent text-muted-foreground cursor-not-allowed"
-                )}
-              >
-                {loading
-                  ? <Loader2 className="h-5 w-5 animate-spin" strokeWidth={1.75} />
-                  : <Send className="h-5 w-5" strokeWidth={1.75} />}
-              </button>
+          <div className="sticky bottom-0 left-0 right-0 pt-6 pb-8 glass-panel border-t border-border">
+            <div className="mx-auto w-full max-w-3xl px-page-x">
+              <div className="flex items-center gap-4 rounded-2xl border border-border bg-background/40 backdrop-blur-md px-5 py-3.5 shadow-sm focus-within:border-foreground/25 focus-within:ring-2 focus-within:ring-foreground/10 transition-all min-h-[3.5rem]">
+                <input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+                  placeholder="Paste a headline or describe a news event…"
+                  className="flex-1 bg-transparent text-[15px] text-foreground placeholder:text-muted-foreground focus:outline-none min-h-[2.75rem]"
+                />
+                <button
+                  onClick={handleSubmit}
+                  disabled={!input.trim() || loading}
+                  className={cn(
+                    "flex items-center justify-center h-11 w-11 rounded-xl transition-all shrink-0",
+                    input.trim() && !loading
+                      ? "bg-foreground text-background hover:opacity-90"
+                      : "bg-muted text-muted-foreground cursor-not-allowed"
+                  )}
+                >
+                  {loading
+                    ? <Loader2 className="h-5 w-5 animate-spin" strokeWidth={1.75} />
+                    : <Send className="h-5 w-5" strokeWidth={1.75} />}
+                </button>
+              </div>
+              <p className="mt-2 text-[11px] text-muted-foreground text-center">
+                {history.length} prediction{history.length !== 1 ? "s" : ""} this session
+              </p>
             </div>
-            <p className="mt-2.5 text-[10px] text-muted-foreground text-center">
-              {history.length} prediction{history.length !== 1 ? "s" : ""} this session
-            </p>
           </div>
         )}
       </div>

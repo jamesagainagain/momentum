@@ -18,6 +18,15 @@ export default {
         mono: ["JetBrains Mono", "monospace"],
         display: ["Poppins", "system-ui", "sans-serif"],
       },
+      spacing: {
+        "page-x": "var(--space-page-x)",
+        "page-y": "var(--space-page-y)",
+        "section": "var(--space-section)",
+        "block": "var(--space-block)",
+        "element": "var(--space-element)",
+        "touch": "var(--touch-min)",
+        "input": "var(--input-height)",
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

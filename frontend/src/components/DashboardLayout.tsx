@@ -17,7 +17,7 @@ export function DashboardLayout({
       <DashboardSidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <TopBar title={title} />
-        <main className="flex-1 overflow-y-auto px-8 py-8 scrollbar-thin">
+        <main className="flex-1 overflow-y-auto scrollbar-thin px-page-x py-page-y">
           {children}
         </main>
       </div>
