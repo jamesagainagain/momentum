@@ -2,9 +2,9 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Remove spam/noise from raw data, re-run the full pipeline on clean data, fix the broken theme→cluster mapping, and surface theme names (not TF-IDF keywords) throughout the dashboard.
+**Goal:** Remove spam/noise from raw data, re-run the full pipeline on clean data, fix the broken theme→cluster mapping, surface theme names throughout the dashboard, and add a weekly recency layer for recent high-density data.
 
-**Architecture:** A new `scripts/0_preprocess_data.py` deduplicates and caps the raw CSV before Script 1 runs. Script 1 re-clusters the clean embeddings with all 12 cores. Script 4 scores all 28 themes against the new clusters. A new `scripts/4b_build_theme_cluster_map.py` builds the explicit theme→cluster mapping used by the forecast engine. The server and dashboard label clusters by theme name where a mapping exists.
+**Architecture:** A new `scripts/0_preprocess_data.py` deduplicates and caps the raw CSV before Script 1 runs. Script 1 re-clusters the clean embeddings with all 12 cores. Script 4 scores all 28 themes against the new clusters. A new `scripts/4b_build_theme_cluster_map.py` builds the explicit theme→cluster mapping used by the forecast engine. The server and dashboard label clusters by theme name where a mapping exists. Script 2 generates a second weekly snapshot covering the last 12 months only; the dashboard trend chart toggles between monthly (full history) and weekly (recent 12 months) per cluster, showing weekly only when density supports it.
 
 **Tech Stack:** Python 3.13, pandas, numpy, hdbscan, scikit-learn (PCA, TF-IDF), UMAP (run outside Cursor sandbox), joblib, PyYAML, FastAPI.
 
@@ -1155,6 +1155,584 @@ python scripts/4b_build_theme_cluster_map.py --force
 python scripts/5_event_direction_forecast.py --force
 
 # 6. Retrain model (uses all cores)
+python scripts/6_train_direction_model.py --force
+
+# Start server
+uvicorn server:app --reload --port 8000
+```
+
+Total time: ~20–30 minutes (dominated by UMAP in Script 1).
+
+---
+
+## Task 9: Weekly recency layer — Script 2 + API + dashboard toggle
+
+**Files:**
+- Modify: `scripts/2_temporal_analysis.py` — generate weekly snapshot for last 12 months
+- Modify: `config.yaml` — add `recency_window` and `recency_lookback_months`
+- Modify: `server.py` — add `/api/snapshots/weekly-recent` endpoint + density gating
+- Modify: `frontend/src/lib/api.ts` — add `WeeklySnapshot` type + `fetchWeeklySnapshots()`
+- Modify: `frontend/src/pages/Index.tsx` — add monthly/weekly toggle to trend chart
+- Create: `tests/test_weekly_recency.py`
+
+**Background — why weekly only for recent data:**
+- Full dataset (2016–2026): median 0 posts/cluster/week — 86% of windows are zero. Useless for stats.
+- Recent 12 months (2025–2026): ~980 posts/month total, ~11 posts/cluster/week for active clusters. Borderline but workable.
+- Gate: only show weekly data for a cluster when ≥50% of its weekly windows in the recency period have ≥3 posts. Otherwise fall back to monthly silently.
+
+---
+
+### Step 1: Write the failing tests
+
+```python
+# tests/test_weekly_recency.py
+import pandas as pd
+import pytest
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from scripts.temporal_recency import (
+    build_weekly_recency_snapshots,
+    is_cluster_weekly_dense_enough,
+)
+
+def _make_cluster_df():
+    dates = pd.date_range("2025-01-06", periods=52, freq="W-MON")
+    rows = []
+    # cluster 1: posts every week (dense)
+    for d in dates:
+        for _ in range(5):
+            rows.append({"timestamp": d, "cluster": 1, "cluster_label": "dense topic",
+                         "likes": 2, "reach": 10, "shares": 1, "comments": 0,
+                         "Author": "user_a"})
+    # cluster 2: posts only 10 weeks out of 52 (sparse)
+    for d in dates[:10]:
+        rows.append({"timestamp": d, "cluster": 2, "cluster_label": "sparse topic",
+                     "likes": 1, "reach": 5, "shares": 0, "comments": 0,
+                     "Author": "user_b"})
+    return pd.DataFrame(rows)
+
+def test_dense_cluster_qualifies():
+    df = _make_cluster_df()
+    assert is_cluster_weekly_dense_enough(df, cluster_id=1, min_posts=3, min_density=0.5) is True
+
+def test_sparse_cluster_does_not_qualify():
+    df = _make_cluster_df()
+    assert is_cluster_weekly_dense_enough(df, cluster_id=2, min_posts=3, min_density=0.5) is False
+
+def test_build_weekly_recency_snapshots_only_includes_dense_clusters():
+    df = _make_cluster_df()
+    snaps = build_weekly_recency_snapshots(df, lookback_months=12, min_posts=3, min_density=0.5)
+    cluster_ids = snaps["cluster"].unique()
+    assert 1 in cluster_ids
+    assert 2 not in cluster_ids
+
+def test_build_weekly_recency_snapshots_has_required_columns():
+    df = _make_cluster_df()
+    snaps = build_weekly_recency_snapshots(df, lookback_months=12, min_posts=3, min_density=0.5)
+    for col in ["time_window", "cluster", "cluster_label", "post_count",
+                "market_share", "volume_pct_change", "volume_volatility",
+                "momentum", "lifecycle_state", "anomaly_score", "window_type"]:
+        assert col in snaps.columns, f"Missing column: {col}"
+    assert (snaps["window_type"] == "1W").all()
+```
+
+**Step 2: Run tests to verify they fail**
+
+```bash
+python -m pytest tests/test_weekly_recency.py -v
+```
+Expected: `ImportError: No module named 'scripts.temporal_recency'`
+
+---
+
+### Step 3: Create `scripts/temporal_recency.py`
+
+```python
+"""
+Temporal recency utilities: weekly snapshots for the most recent N months.
+
+Only clusters that pass a density gate are included — prevents the chart
+showing noisy 0/0/spike/0 weekly patterns for thin clusters.
+"""
+import numpy as np
+import pandas as pd
+
+
+def is_cluster_weekly_dense_enough(
+    df: pd.DataFrame,
+    cluster_id: int,
+    min_posts: int = 3,
+    min_density: float = 0.5,
+) -> bool:
+    """
+    Return True if cluster has enough weekly posts to be worth showing.
+
+    Requires that at least `min_density` fraction of weeks (within the
+    cluster's active period) contain >= `min_posts` posts.
+    """
+    cdf = df[df["cluster"] == cluster_id].copy()
+    if cdf.empty:
+        return False
+    cdf["timestamp"] = pd.to_datetime(cdf["timestamp"], errors="coerce")
+    cdf = cdf.dropna(subset=["timestamp"])
+    weekly = cdf.set_index("timestamp").resample("1W")["cluster"].count()
+    # Trim to active period
+    active = weekly[weekly > 0]
+    if active.empty:
+        return False
+    first, last = active.index.min(), active.index.max()
+    active_range = weekly[(weekly.index >= first) & (weekly.index <= last)]
+    dense_weeks = (active_range >= min_posts).sum()
+    density = dense_weeks / max(len(active_range), 1)
+    return bool(density >= min_density)
+
+
+def build_weekly_recency_snapshots(
+    df: pd.DataFrame,
+    lookback_months: int = 12,
+    min_posts: int = 3,
+    min_density: float = 0.5,
+) -> pd.DataFrame:
+    """
+    Build weekly snapshots for the most recent `lookback_months` of data,
+    only for clusters that pass the density gate.
+
+    Returns a DataFrame with the same schema as cluster_trend_snapshots_1M.csv
+    plus a `window_type` column set to "1W".
+    """
+    df = df.copy()
+    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+    df = df.dropna(subset=["timestamp"])
+
+    cutoff = df["timestamp"].max() - pd.DateOffset(months=lookback_months)
+    recent = df[df["timestamp"] >= cutoff].copy()
+
+    # Identify dense-enough clusters using the recent slice
+    dense_cluster_ids = [
+        cid for cid in recent["cluster"].unique()
+        if cid != -1
+        and is_cluster_weekly_dense_enough(recent, cid, min_posts=min_posts, min_density=min_density)
+    ]
+
+    if not dense_cluster_ids:
+        return pd.DataFrame(columns=[
+            "time_window", "cluster", "cluster_label", "post_count",
+            "market_share", "volume_pct_change", "volume_volatility",
+            "momentum", "lifecycle_state", "anomaly_score", "window_type",
+        ])
+
+    records = []
+    for cid in dense_cluster_ids:
+        cdf = recent[recent["cluster"] == cid].copy()
+        label = cdf["cluster_label"].iloc[0] if "cluster_label" in cdf.columns else str(cid)
+
+        resampled = cdf.set_index("timestamp").resample("1W").agg(
+            post_count=("cluster", "count"),
+        ).fillna(0)
+
+        resampled["cluster"] = cid
+        resampled["cluster_label"] = label
+        resampled["volume_pct_change"] = resampled["post_count"].pct_change().fillna(0).clip(-10, 10)
+        resampled["volume_volatility"] = (
+            resampled["post_count"].rolling(3, min_periods=1).std().fillna(0)
+        )
+        rolling_mean = resampled["post_count"].rolling(3, min_periods=1).mean()
+        resampled["momentum"] = resampled["post_count"] - rolling_mean
+
+        mean_vol = resampled["post_count"].mean()
+        std_vol = resampled["post_count"].std()
+        resampled["anomaly_score"] = (
+            (resampled["post_count"] - mean_vol) / (std_vol if std_vol > 0 else 1)
+        )
+
+        # Lifecycle based on last 3 weeks
+        recent_growth = resampled["volume_pct_change"].tail(3).mean()
+        recent_vol = resampled["post_count"].tail(3).mean()
+        overall_vol = resampled["post_count"].mean()
+        if overall_vol == 0 or recent_vol < overall_vol * 0.2:
+            lifecycle = "dormant"
+        elif recent_growth > 0.5:
+            lifecycle = "emerging"
+        elif recent_growth > 0.1:
+            lifecycle = "trending"
+        elif recent_growth < -0.3:
+            lifecycle = "declining"
+        else:
+            lifecycle = "stable"
+        resampled["lifecycle_state"] = lifecycle
+
+        records.append(resampled)
+
+    result = pd.concat(records).reset_index()
+    result = result.rename(columns={"timestamp": "time_window"})
+
+    # Market share across all dense clusters per window
+    total_per_window = result.groupby("time_window")["post_count"].transform("sum")
+    result["market_share"] = result["post_count"] / total_per_window.replace(0, np.nan)
+
+    result["window_type"] = "1W"
+    result["time_window"] = pd.to_datetime(result["time_window"])
+
+    columns = [
+        "time_window", "cluster", "cluster_label", "post_count",
+        "market_share", "volume_pct_change", "volume_volatility",
+        "momentum", "lifecycle_state", "anomaly_score", "window_type",
+    ]
+    return result[columns].sort_values(["time_window", "cluster"]).reset_index(drop=True)
+```
+
+**Step 4: Run tests to verify they pass**
+
+```bash
+python -m pytest tests/test_weekly_recency.py -v
+```
+Expected: 4 PASSED
+
+---
+
+### Step 5: Add recency config to `config.yaml`
+
+Add under the existing `temporal:` block:
+
+```yaml
+temporal:
+  default_window: "1M"
+  recency_window: "1W"
+  recency_lookback_months: 12
+  recency_min_posts_per_window: 3
+  recency_min_density: 0.5
+```
+
+Add to `output:` block:
+
+```yaml
+output:
+  # ... existing outputs ...
+  cluster_trend_snapshots_1w_recent: "output/cluster_trend_snapshots_1W_recent.parquet"
+  cluster_trend_snapshots_1w_recent_csv: "output/cluster_trend_snapshots_1W_recent.csv"
+```
+
+---
+
+### Step 6: Modify `scripts/2_temporal_analysis.py` to generate weekly snapshot
+
+At the end of `main()`, after the existing monthly snapshot save, add:
+
+```python
+# --- Weekly recency snapshot ---
+from scripts.temporal_recency import build_weekly_recency_snapshots
+
+recency_cfg = config.get("temporal", {})
+lookback = int(recency_cfg.get("recency_lookback_months", 12))
+min_posts = int(recency_cfg.get("recency_min_posts_per_window", 3))
+min_density = float(recency_cfg.get("recency_min_density", 0.5))
+
+weekly_recency = build_weekly_recency_snapshots(
+    df,
+    lookback_months=lookback,
+    min_posts=min_posts,
+    min_density=min_density,
+)
+
+weekly_recency_parquet = resolve(
+    config["output"].get(
+        "cluster_trend_snapshots_1w_recent",
+        "output/cluster_trend_snapshots_1W_recent.parquet",
+    )
+)
+weekly_recency_csv = resolve(
+    config["output"].get(
+        "cluster_trend_snapshots_1w_recent_csv",
+        "output/cluster_trend_snapshots_1W_recent.csv",
+    )
+)
+weekly_recency.to_parquet(weekly_recency_parquet, index=False)
+weekly_recency.to_csv(weekly_recency_csv, index=False)
+
+dense_clusters = weekly_recency["cluster"].nunique()
+print(f"Saved weekly recency snapshots ({len(weekly_recency)} rows, "
+      f"{dense_clusters} dense clusters) to {weekly_recency_parquet}")
+```
+
+**Run Script 2 again to regenerate with the weekly output:**
+
+```bash
+python scripts/2_temporal_analysis.py --config config.yaml --force
+```
+
+Expected: existing monthly outputs regenerate + new weekly recency files appear.
+
+Verify:
+```bash
+python3 -c "
+import pandas as pd
+w = pd.read_csv('output/cluster_trend_snapshots_1W_recent.csv')
+print('Weekly recency shape:', w.shape)
+print('Dense clusters:', w['cluster'].nunique())
+print('Date range:', w['time_window'].min(), '->', w['time_window'].max())
+print('Clusters:', w.groupby('cluster')['cluster_label'].first().to_dict())
+"
+```
+
+---
+
+### Step 7: Add `/api/snapshots/weekly-recent` endpoint to `server.py`
+
+After loading `SNAPSHOTS_CSV_PATH`, add:
+
+```python
+WEEKLY_RECENT_CSV_PATH = _resolve(
+    CONFIG["output"].get(
+        "cluster_trend_snapshots_1w_recent_csv",
+        "output/cluster_trend_snapshots_1W_recent.csv",
+    )
+)
+```
+
+Add the new endpoint after the existing `/api/snapshots`:
+
+```python
+@app.get("/api/snapshots/weekly-recent")
+def get_weekly_recent_snapshots():
+    """Weekly snapshots for the last 12 months, dense clusters only."""
+    if not WEEKLY_RECENT_CSV_PATH.exists():
+        return []
+    df = pd.read_csv(str(WEEKLY_RECENT_CSV_PATH), low_memory=False)
+
+    snapshots = []
+    for _, row in df.iterrows():
+        snapshots.append({
+            "cluster_id": f"cluster-{int(row['cluster'])}",
+            "cluster_label": str(row.get("cluster_label", f"Cluster {int(row['cluster'])}")),
+            "time_window": str(row.get("time_window", "")),
+            "post_count": int(row.get("post_count", 0)),
+            "market_share": float(row.get("market_share", 0) * 100),
+            "momentum": float(row.get("momentum", 0)),
+            "volatility": float(row.get("volume_volatility", 0)),
+            "window_type": "1W",
+        })
+    return _sanitize(snapshots)
+```
+
+Also add a `weekly_dense_clusters` field to the existing `/api/health` response so the frontend knows upfront which clusters have weekly data:
+
+```python
+@app.get("/api/health")
+def health():
+    weekly_clusters = 0
+    if WEEKLY_RECENT_CSV_PATH.exists():
+        wdf = pd.read_csv(str(WEEKLY_RECENT_CSV_PATH), low_memory=False)
+        weekly_clusters = int(wdf["cluster"].nunique()) if "cluster" in wdf.columns else 0
+    return {
+        "status": "ok",
+        "model_loaded": model_bundle is not None,
+        "themes": len(THEMES),
+        "clusters": len(profiles_df),
+        "weekly_dense_clusters": weekly_clusters,
+    }
+```
+
+---
+
+### Step 8: Add types and fetch function to `frontend/src/lib/api.ts`
+
+Add `theme_name` to `ClusterInfo` and `Snapshot`, and add the new fetch:
+
+```typescript
+export interface ClusterInfo {
+  id: string;
+  cluster: number;
+  cluster_label: string;
+  theme_name: string;        // ADD
+  size: number;
+  market_share: number;
+  volume_pct_change: number;
+  volume_volatility: number;
+  momentum: number;
+  lifecycle: string;
+  anomaly_score: number;
+}
+
+export interface Snapshot {
+  cluster_id: string;
+  cluster_label: string;
+  time_window: string;
+  post_count: number;
+  market_share: number;
+  momentum: number;
+  volatility: number;
+  window_type?: "1M" | "1W";  // ADD
+}
+
+export async function fetchWeeklySnapshots(): Promise<Snapshot[]> {
+  return request("/snapshots/weekly-recent");
+}
+```
+
+---
+
+### Step 9: Update `frontend/src/pages/Index.tsx` — add monthly/weekly toggle
+
+**What changes:**
+- Add a `granularity` state: `"monthly" | "weekly"`
+- When `"weekly"` selected, use `fetchWeeklySnapshots()` data instead of `displaySnapshots`
+- Show the toggle only when weekly data is available (non-empty)
+- For clusters that have no weekly data, the toggle stays on monthly and the button is greyed out
+
+```typescript
+// Add state
+const [granularity, setGranularity] = useState<"monthly" | "weekly">("monthly");
+const [weeklySnapshots, setWeeklySnapshots] = useState<Snapshot[]>([]);
+
+// Add to the existing useEffect fetch block:
+fetchWeeklySnapshots().then(setWeeklySnapshots).catch(() => {}),
+
+// Derived: which clusters have weekly data
+const weeklyClusterIds = useMemo(
+  () => new Set(weeklySnapshots.map((s) => s.cluster_id)),
+  [weeklySnapshots]
+);
+const hasWeeklyData = weeklySnapshots.length > 0;
+
+// Replace displaySnapshots with granularity-aware source in trendData:
+const activeSnapshots = granularity === "weekly" && hasWeeklyData
+  ? weeklySnapshots
+  : displaySnapshots;
+
+// trendData useMemo uses activeSnapshots instead of displaySnapshots
+const trendData = useMemo(() => {
+  const ids = selectedClusterIds.length
+    ? selectedClusterIds
+    : clusterOptions.slice(0, 3).map((c) => c.id);
+  const timeWindows = [...new Set(activeSnapshots.map((s) => s.time_window))].sort();
+  return timeWindows.map((tw) => {
+    const row: Record<string, string | number> = {
+      time_window: granularity === "weekly" ? tw.slice(0, 10) : tw.slice(0, 7),
+    };
+    ids.forEach((id) => {
+      const snap = activeSnapshots.find((s) => s.cluster_id === id && s.time_window === tw);
+      if (snap) row[id] = snap[selectedMetric] ?? 0;
+    });
+    return row;
+  });
+}, [selectedClusterIds, selectedMetric, clusterOptions, activeSnapshots, granularity]);
+```
+
+**Add the toggle UI** in the Monthly Trends card header, next to the metric buttons:
+
+```tsx
+{/* Granularity toggle — only shown when weekly data exists */}
+{hasWeeklyData && (
+  <div className="flex items-center gap-1 border border-border rounded p-0.5">
+    <button
+      onClick={() => setGranularity("monthly")}
+      className={cn(
+        "px-2.5 py-1 rounded text-[10px] font-medium transition-colors",
+        granularity === "monthly"
+          ? "bg-foreground text-background"
+          : "text-muted-foreground hover:text-foreground"
+      )}
+    >
+      Monthly
+    </button>
+    <button
+      onClick={() => setGranularity("weekly")}
+      className={cn(
+        "px-2.5 py-1 rounded text-[10px] font-medium transition-colors",
+        granularity === "weekly"
+          ? "bg-foreground text-background"
+          : "text-muted-foreground hover:text-foreground"
+      )}
+    >
+      Weekly (recent)
+    </button>
+  </div>
+)}
+```
+
+**Add a subtitle update** to show context:
+
+```tsx
+<p className="mt-1 text-[11px] text-muted-foreground">
+  {granularity === "weekly"
+    ? `Weekly · last 12 months · ${weeklyClusterIds.size} dense clusters`
+    : `Monthly · full history${useRealData ? " (live)" : ""}`}
+</p>
+```
+
+**Filter cluster pills** when in weekly mode to only show clusters that have weekly data:
+
+```tsx
+const activeClusterOptions = useMemo(() => {
+  if (granularity === "weekly" && hasWeeklyData) {
+    return clusterOptions.filter((c) => weeklyClusterIds.has(c.id));
+  }
+  return clusterOptions;
+}, [clusterOptions, granularity, hasWeeklyData, weeklyClusterIds]);
+```
+
+Then replace all `clusterOptions` references in the pill map and `activeClusterIds` derivation with `activeClusterOptions`.
+
+---
+
+### Step 10: Run all tests + verify end-to-end
+
+```bash
+python -m pytest tests/ -v
+```
+Expected: all PASS including the 4 new weekly recency tests.
+
+Start server and open dashboard:
+
+```bash
+uvicorn server:app --reload --port 8000
+```
+
+Verify:
+1. Monthly Trends shows monthly data by default — full 2016–2026 range
+2. "Weekly (recent)" toggle appears when `output/cluster_trend_snapshots_1W_recent.csv` exists
+3. Switching to weekly shows only the last 12 months, at weekly resolution
+4. Cluster pills in weekly mode only show clusters with sufficient density
+5. Switching back to monthly restores the full history view
+
+**Step 11: Commit**
+
+```bash
+git add scripts/temporal_recency.py tests/test_weekly_recency.py \
+        scripts/2_temporal_analysis.py server.py config.yaml \
+        frontend/src/lib/api.ts frontend/src/pages/Index.tsx \
+        output/cluster_trend_snapshots_1W_recent.parquet \
+        output/cluster_trend_snapshots_1W_recent.csv
+git commit -m "feat: add weekly recency layer — density-gated weekly snapshots for last 12 months with dashboard toggle"
+```
+
+---
+
+## Updated Full Run Order (Summary)
+
+```bash
+# From your Mac Terminal (not Cursor)
+cd /Users/james/momentum
+
+# 0. Preprocess (remove spam, cap authors)
+python scripts/0_preprocess_data.py --force
+
+# 1. Re-cluster — uses all 12 cores, ~15-25 min
+python scripts/1_cluster_embeddings.py --force
+
+# 2. Temporal analysis — generates both monthly AND weekly recency snapshots
+python scripts/2_temporal_analysis.py --force
+
+# 4. Theme activation — all 28 themes, 12 cores
+python scripts/4_theme_activation_tfidf.py --mode windows --n-jobs 12 --force
+
+# 4b. Build theme→cluster map
+python scripts/4b_build_theme_cluster_map.py --force
+
+# 5. Rebuild cluster state database
+python scripts/5_event_direction_forecast.py --force
+
+# 6. Retrain model
 python scripts/6_train_direction_model.py --force
 
 # Start server
