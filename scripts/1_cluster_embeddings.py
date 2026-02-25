@@ -25,13 +25,15 @@ def _set_numba_threads(n=None):
     if n is None:
         n = _cpu_count()
     n = max(1, n)
-    os.environ.setdefault("NUMBA_NUM_THREADS", str(n))
+    os.environ["NUMBA_NUM_THREADS"] = str(n)
     return n
 
 import numpy as np
 import pandas as pd
 import yaml
 from tqdm import tqdm
+
+from scripts.cluster_label_utils import clean_label_text
 
 
 def load_config(config_path):
@@ -110,7 +112,7 @@ def generate_cluster_labels(df, text_column, n_top_terms=3, pbar=None):
             mean_tfidf = tfidf_matrix.mean(axis=0).A1
             top_indices = mean_tfidf.argsort()[-n_top_terms:][::-1]
             top_terms = [feature_names[i] for i in top_indices]
-            labels[cluster_id] = ", ".join(top_terms)
+            labels[cluster_id] = clean_label_text(top_terms, n_top=3)
         except Exception:
             labels[cluster_id] = f"Cluster {cluster_id}"
 
