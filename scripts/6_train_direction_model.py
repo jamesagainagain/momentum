@@ -404,6 +404,10 @@ def main():
             for name, estimator in estimators.items():
                 est = copy.deepcopy(estimator)
                 y_fit = y_train.map(label_to_int).astype(int) if name in numeric_target_models else y_train
+                # Skip numeric-target models if fold is missing classes (XGBoost requires contiguous labels)
+                if name in numeric_target_models and len(y_fit.unique()) < len(DIRECTION_LABELS):
+                    fold_metrics[name] = evaluate(y_test, pd.Series(["flat"] * len(y_test), index=y_test.index))
+                    continue
                 est.fit(X_train, y_fit)
                 est, _ = calibrate_if_enabled(est, X_train, y_fit, calibration_enabled)
                 proba_rows = predict_proba_frame(est, X_test, DIRECTION_LABELS)
