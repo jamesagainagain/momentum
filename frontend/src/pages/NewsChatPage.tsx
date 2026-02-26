@@ -505,6 +505,8 @@ const NewsChatPage = () => {
                   height={barSize.height || 72}
                   fillShape={false}
                   preset={LIQUID_GLASS_BAR_PRESET}
+                  shapeWidthRatio={0.98}
+                  shapeHeightRatio={0.92}
                   className="absolute inset-0 h-full w-full pointer-events-none"
                   interactive={false}
                   backgroundTextureUrl={barGradientDataUrl}

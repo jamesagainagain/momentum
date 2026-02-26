@@ -24,6 +24,10 @@ export interface LiquidGlassCanvasProps {
   preset?: LiquidGlassPresetControls | null;
   /** When true and WebGL is unavailable, render transparent (no fallback bar). */
   fallbackTransparent?: boolean;
+  /** When fillShape is false: pill width as ratio of canvas width (0–1). Default 0.85. */
+  shapeWidthRatio?: number;
+  /** When fillShape is false: pill height as ratio of canvas height (0–1). Default 0.7. */
+  shapeHeightRatio?: number;
 }
 
 const DEFAULT_BLUR = 24;
@@ -61,6 +65,8 @@ export function LiquidGlassCanvas({
   fillShape = false,
   preset = null,
   fallbackTransparent = false,
+  shapeWidthRatio = 0.85,
+  shapeHeightRatio = 0.7,
 }: LiquidGlassCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [webglUnavailable, setWebglUnavailable] = useState(false);
@@ -72,8 +78,8 @@ export function LiquidGlassCanvas({
   const canvasWidth = Math.round(width * dpr);
   const canvasHeight = Math.round(height * dpr);
 
-  const shapeW = fillShape ? canvasWidth : (width * 0.85 * dpr) / 2;
-  const shapeH = fillShape ? canvasHeight : (height * 0.7 * dpr) / 2;
+  const shapeW = fillShape ? canvasWidth : (width * shapeWidthRatio * dpr) / 2;
+  const shapeH = fillShape ? canvasHeight : (height * shapeHeightRatio * dpr) / 2;
 
   const render = useCallback((): (() => void) | void => {
     const canvas = canvasRef.current;
@@ -233,6 +239,8 @@ export function LiquidGlassCanvas({
     backgroundTextureUrl,
     fillShape,
     preset,
+    shapeWidthRatio,
+    shapeHeightRatio,
   ]);
 
   useEffect(() => {
