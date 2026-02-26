@@ -437,7 +437,7 @@ const NewsChatPage = () => {
                     className={cn(
                       "flex items-center justify-center h-11 w-11 rounded-xl transition-all shrink-0",
                       input.trim()
-                        ? "bg-primary text-primary-foreground hover:opacity-90"
+                        ? "bg-direction-up text-primary-foreground hover:opacity-90"
                         : "bg-muted text-muted-foreground cursor-not-allowed"
                     )}
                   >
@@ -492,13 +492,16 @@ const NewsChatPage = () => {
           )}
         </div>
 
-        {/* Sticky input — no bar: transparent strip, only the glass pill is visible. Fits main content width. */}
+        {/* Sticky input — visible bar with warm background; liquid glass overlays when available. */}
         {(history.length > 0 || loading) && (
           <div className="sticky bottom-0 left-0 right-0 pt-6 pb-8">
             <div className="w-full px-page-x">
               <div
                 ref={barContainerRef}
-                className="relative h-[4.5rem] w-full"
+                className="relative h-[4.5rem] w-full rounded-2xl overflow-hidden"
+                style={{
+                  background: "linear-gradient(135deg, hsl(40, 33%, 99%), hsl(40, 28%, 96%), hsl(40, 25%, 94%))",
+                }}
               >
                 {/* Pill dimensions and preset aligned with design-spec-predict-input.md and liquid-glass-studio. Canvas mounts only when size is known to avoid first-frame size jump. */}
                 {barSize.width > 0 && (
@@ -531,7 +534,7 @@ const NewsChatPage = () => {
                     className={cn(
                       "flex shrink-0 items-center justify-center h-10 w-10 rounded-xl transition-all",
                       input.trim() && !loading
-                        ? "bg-primary text-primary-foreground hover:opacity-90"
+                        ? "bg-direction-up text-primary-foreground hover:opacity-90"
                         : "bg-muted text-muted-foreground cursor-not-allowed"
                     )}
                   >

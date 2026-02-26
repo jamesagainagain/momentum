@@ -134,12 +134,12 @@ export function LiquidGlassCanvas({
           bgRef.ratio = r.ratio;
         },
         () => {
-          bgRef.texture = createSolidColorTexture(gl, "#faf9f5");
+          bgRef.texture = createSolidColorTexture(gl, "#fbf9f6");
           bgRef.ratio = 1;
         }
       );
     } else {
-      bgRef.texture = createSolidColorTexture(gl, "#faf9f5");
+      bgRef.texture = createSolidColorTexture(gl, "#fbf9f6");
       bgRef.ratio = 1;
     }
 
