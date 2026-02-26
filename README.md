@@ -23,7 +23,8 @@ Analyses social media posts with embeddings (e.g. Gemini) to discover topics, tr
 - **Clustering & reduction** — **HDBSCAN** (config: `min_cluster_size`, `min_samples`). Optional **PCA** (e.g. 128 components) before HDBSCAN. **UMAP** (2D, cosine) for visualization. Cluster labels via **class-based TF‑IDF** (and optional LLM semantic rerank; see `llm` in config).
 - **Direction forecast model** — Trained on historical cluster × time-window state (theme scores, volatility, momentum, lags, etc.). Targets are next-window direction (down/flat/up) under an **epsilon band** (config: `target_epsilon`, `target_epsilon_grid`). Training uses **walk-forward cross-validation** over time and optional **probability calibration** and **threshold tuning**.  
   **Base models** (config: `model_training.models`): Logistic Regression, Random Forest, Extra Trees, Histogram Gradient Boosting; optionally XGBoost and LightGBM if installed.  
-  **Ensembles**: **soft-voting** (average class probabilities) and **stacking** (meta-learner on base-model probabilities). The best of single models, soft-voting, or stacking is saved as `direction_model.pkl`.
+  **Ensembles**: **soft-voting** (average class probabilities) and **stacking** (meta-learner on base-model probabilities). The best of single models, soft-voting, or stacking is saved as `direction_model.pkl`.  
+  **Train/test split for evaluation (including stacking ensemble):** a **temporal holdout** — train on all cluster×window rows with `time_window` ≤ cutoff, test on the last fraction of time (config: `model_training.test_fraction`, default 0.2). So test data is the most recent 20% of time windows; no future data leaks into training. The exact split is written to `output/models/direction_model_metrics.json` under `split`: `train_rows`, `test_rows`, `cutoff_time_window`, `test_fraction`. Example: `train_rows: 2326`, `test_rows: 474`, `cutoff_time_window: "2023-12-31 00:00:00"`, `test_fraction: 0.2`.
 - **LLM (optional)** — For the News Impact Chat, **Gemini** (e.g. `gemini-2.5-flash`) can be used to analyse and explain a prediction. Set `GOOGLE_API_KEY` in `.env` and enable in config (`llm.enabled`, `llm.model`).
 
 ---
@@ -206,7 +207,7 @@ python scripts/6_train_direction_model.py --config config.yaml --force   # retra
 **Outputs:**
 
 - `output/models/direction_model.pkl` — artifact (best model, feature columns, epsilon, thresholds, risk bands; stacking includes meta-learner + base estimators)
-- `output/models/direction_model_metrics.json` — split info, per-model accuracy/F1, best model name, walk-forward CV summary, epsilon tuning, threshold tuning, calibration, overfitting diagnostics, comparison vs heuristic
+- `output/models/direction_model_metrics.json` — **train/test split** used for all models (including stacking): `split.train_rows`, `split.test_rows`, `split.cutoff_time_window`, `split.test_fraction` (temporal holdout); per-model accuracy/F1, best model name, walk-forward CV summary, epsilon tuning, threshold tuning, calibration, overfitting diagnostics, comparison vs heuristic
 
 **Overfitting diagnostics (in metrics JSON and terminal):**
 
