@@ -2,6 +2,7 @@ import { useRef, useEffect, useCallback, useState } from "react";
 import { cn } from "@/lib/utils";
 import { MultiPassRenderer, loadTextureFromURL } from "@/lib/liquid-glass/GLUtils";
 import { computeGaussianKernelByRadius } from "@/lib/liquid-glass/utils";
+import type { LiquidGlassPresetControls } from "@/lib/liquid-glass/preset";
 
 import VertexShader from "@/lib/liquid-glass/shaders/vertex.glsl?raw";
 import FragmentBgShader from "@/lib/liquid-glass/shaders/fragment-bg.glsl?raw";
@@ -10,19 +11,19 @@ import FragmentBgHblurShader from "@/lib/liquid-glass/shaders/fragment-bg-hblur.
 import FragmentMainShader from "@/lib/liquid-glass/shaders/fragment-main.glsl?raw";
 
 export interface LiquidGlassCanvasProps {
-  /** Width in pixels. */
   width: number;
-  /** Height in pixels. */
   height: number;
   className?: string;
-  /** Optional image URL for background. If not set, a solid background color is used. */
   backgroundTextureUrl?: string | null;
-  /** Blur radius for glass (default 24). */
   blurRadius?: number;
-  /** Shape roundness / superellipse exponent (default 4). */
   shapeRoundness?: number;
-  /** Enable mouse-reactive glass (default true). Respects prefers-reduced-motion. */
   interactive?: boolean;
+  /** When true, the glass shape fills the entire canvas (for pill/bar). */
+  fillShape?: boolean;
+  /** Optional preset from liquid-glass-studio (overrides defaults). */
+  preset?: LiquidGlassPresetControls | null;
+  /** When true and WebGL is unavailable, render transparent (no fallback bar). */
+  fallbackTransparent?: boolean;
 }
 
 const DEFAULT_BLUR = 24;
@@ -57,6 +58,9 @@ export function LiquidGlassCanvas({
   blurRadius = DEFAULT_BLUR,
   shapeRoundness = DEFAULT_ROUNDNESS,
   interactive = true,
+  fillShape = false,
+  preset = null,
+  fallbackTransparent = false,
 }: LiquidGlassCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [webglUnavailable, setWebglUnavailable] = useState(false);
@@ -68,14 +72,17 @@ export function LiquidGlassCanvas({
   const canvasWidth = Math.round(width * dpr);
   const canvasHeight = Math.round(height * dpr);
 
-  const shapeW = (width * 0.85 * dpr) / 2;
-  const shapeH = (height * 0.7 * dpr) / 2;
+  const shapeW = fillShape ? canvasWidth : (width * 0.85 * dpr) / 2;
+  const shapeH = fillShape ? canvasHeight : (height * 0.7 * dpr) / 2;
 
   const render = useCallback((): (() => void) | void => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const gl = canvas.getContext("webgl2");
+    const gl = canvas.getContext("webgl2", {
+      alpha: true,
+      premultipliedAlpha: false,
+    });
     if (!gl) {
       setWebglUnavailable(true);
       return;
@@ -110,7 +117,8 @@ export function LiquidGlassCanvas({
       },
     ]);
 
-    const blurWeights = computeGaussianKernelByRadius(blurRadius);
+    const blurRadiusUsed = preset?.blurRadius ?? blurRadius;
+    const blurWeights = computeGaussianKernelByRadius(blurRadiusUsed);
 
     const bgRef = { texture: null as WebGLTexture | null, ratio: 1 };
     if (backgroundTextureUrl) {
@@ -143,24 +151,37 @@ export function LiquidGlassCanvas({
       const mouseY = (height - pointerRef.current.y) * dpr;
       const shapeSizeSpringX = shapeW;
       const shapeSizeSpringY = shapeH;
-      const shapeRadiusPx = (Math.min(shapeSizeSpringX, shapeSizeSpringY) / 2) * 0.5;
+      const shapeRadiusPx = fillShape
+        ? Math.min(canvasWidth, canvasHeight) / 2
+        : (() => {
+            const minHalf = Math.min(shapeSizeSpringX, shapeSizeSpringY) / 2;
+            const pct = preset?.shapeRadius ?? 50;
+            return minHalf * (pct / 100);
+          })();
+
+      const mergeRate = preset?.mergeRate ?? 0.15;
+      const shapeRoundnessUsed = preset?.shapeRoundness ?? shapeRoundness;
+      const glareAngleDeg = preset?.glareAngle ?? 45;
+      const showShape1 = preset?.showShape1 ? 1 : 0;
 
       renderer.setUniforms({
         u_resolution: [canvasWidth, canvasHeight],
         u_dpr: dpr,
         u_blurWeights: blurWeights,
-        u_blurRadius: blurRadius,
+        u_blurRadius: blurRadiusUsed,
         u_mouse: [mouseX, mouseY],
         u_mouseSpring: [mouseX, mouseY],
         u_shapeWidth: shapeSizeSpringX,
         u_shapeHeight: shapeSizeSpringY,
         u_shapeRadius: shapeRadiusPx,
-        u_shapeRoundness: shapeRoundness,
-        u_mergeRate: 0.15,
-        u_glareAngle: (45 * Math.PI) / 180,
-        u_showShape1: 0,
+        u_shapeRoundness: shapeRoundnessUsed,
+        u_mergeRate: mergeRate,
+        u_glareAngle: (glareAngleDeg * Math.PI) / 180,
+        u_showShape1: showShape1,
       });
 
+      const t = preset?.tint ?? { r: 255, g: 255, b: 255, a: 8 };
+      const shadowPos = preset?.shadowPosition ?? { x: 0, y: 0 };
       const hasBg = bgRef.texture != null;
       renderer.render({
         bgPass: {
@@ -168,25 +189,25 @@ export function LiquidGlassCanvas({
           u_bgTexture: hasBg ? bgRef.texture! : undefined,
           u_bgTextureRatio: bgRef.ratio,
           u_bgTextureReady: hasBg ? 1 : 0,
-          u_shadowExpand: 80,
-          u_shadowFactor: 0.5,
-          u_shadowPosition: [0, 0],
+          u_shadowExpand: preset?.shadowExpand ?? 80,
+          u_shadowFactor: (preset?.shadowFactor ?? 50) / 100,
+          u_shadowPosition: [-shadowPos.x, -shadowPos.y],
         },
         mainPass: {
-          u_tint: [1, 1, 1, 0.08],
-          u_refThickness: 80,
-          u_refFactor: 1.5,
-          u_refDispersion: 0.1,
-          u_refFresnelRange: 500,
-          u_refFresnelHardness: 0.5,
-          u_refFresnelFactor: 0.5,
-          u_glareRange: 400,
-          u_glareHardness: 0.5,
-          u_glareConvergence: 0.5,
-          u_glareOppositeFactor: 0.5,
-          u_glareFactor: 0.15,
-          u_blurEdge: 0,
-          STEP: 9,
+          u_tint: [t.r / 255, t.g / 255, t.b / 255, t.a / 255],
+          u_refThickness: preset?.refThickness ?? 80,
+          u_refFactor: preset?.refFactor ?? 1.5,
+          u_refDispersion: preset?.refDispersion ?? 0.1,
+          u_refFresnelRange: preset?.refFresnelRange ?? 500,
+          u_refFresnelHardness: (preset?.refFresnelHardness ?? 50) / 100,
+          u_refFresnelFactor: (preset?.refFresnelFactor ?? 50) / 100,
+          u_glareRange: preset?.glareRange ?? 400,
+          u_glareHardness: (preset?.glareHardness ?? 50) / 100,
+          u_glareConvergence: (preset?.glareConvergence ?? 50) / 100,
+          u_glareOppositeFactor: (preset?.glareOppositeFactor ?? 50) / 100,
+          u_glareFactor: (preset?.glareFactor ?? 15) / 100,
+          u_blurEdge: preset?.blurEdge ? 1 : 0,
+          STEP: preset?.step ?? 9,
         },
       });
     };
@@ -210,6 +231,8 @@ export function LiquidGlassCanvas({
     blurRadius,
     shapeRoundness,
     backgroundTextureUrl,
+    fillShape,
+    preset,
   ]);
 
   useEffect(() => {
@@ -239,7 +262,7 @@ export function LiquidGlassCanvas({
   if (webglUnavailable) {
     return (
       <div
-        className={cn("glass-panel rounded-lg", className)}
+        className={cn(fallbackTransparent ? "bg-transparent" : "glass-panel rounded-lg", className)}
         style={{ width, height }}
         aria-hidden
       />

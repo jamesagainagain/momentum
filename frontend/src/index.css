@@ -150,6 +150,19 @@
     scrollbar-color: hsl(var(--muted)) transparent;
   }
 
+  /* Predict sticky input: no bar, no border, no background — only the liquid glass pill is visible */
+  .predict-sticky-input input {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  .predict-sticky-input {
+    border: none !important;
+    background: transparent !important;
+  }
+
   .grid-texture {
     background-image: none;
   }

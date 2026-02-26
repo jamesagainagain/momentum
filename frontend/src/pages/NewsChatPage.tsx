@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import {
   Send, ArrowUpRight, ArrowDownRight, Minus, Clock, TrendingUp,
   BarChart3, AlertTriangle, Loader2, ChevronDown, ChevronUp,
@@ -8,8 +8,10 @@ import {
   ResponsiveContainer, Cell, ReferenceLine,
 } from "recharts";
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { LiquidGlassCanvas } from "@/components/LiquidGlassCanvas";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { predictEvent, chatAnalysis, type PredictionResponse } from "@/lib/api";
+import { LIQUID_GLASS_BAR_PRESET } from "@/lib/liquid-glass/preset";
 import { cn } from "@/lib/utils";
 
 const directionConfig = {
@@ -334,6 +336,28 @@ const NewsChatPage = () => {
   const [stage, setStage] = useState<"predicting" | "analyzing" | "">("");
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const barContainerRef = useRef<HTMLDivElement>(null);
+  const [barSize, setBarSize] = useState({ width: 0, height: 0 });
+
+  // Subtle gradient so liquid glass refraction/dispersion/Fresnel are visible (from liquid-glass-studio)
+  const barGradientDataUrl = useMemo(() => {
+    const light = "hsl(40, 33%, 99%)";
+    const mid = "hsl(40, 28%, 96%)";
+    const dark = "hsl(40, 25%, 94%)";
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${light}"/><stop offset="50%" stop-color="${mid}"/><stop offset="100%" stop-color="${dark}"/></linearGradient></defs><rect width="64" height="64" fill="url(#g)"/></svg>`;
+    return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  }, []);
+
+  useEffect(() => {
+    const el = barContainerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const { width, height } = entries[0]?.contentRect ?? { width: 0, height: 0 };
+      setBarSize({ width: Math.round(width), height: Math.round(height) });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -468,32 +492,49 @@ const NewsChatPage = () => {
           )}
         </div>
 
-        {/* Sticky input — only when there's history or loading */}
+        {/* Sticky input — no bar: transparent strip, only the glass pill is visible. Fits main content width. */}
         {(history.length > 0 || loading) && (
-          <div className="sticky bottom-0 left-0 right-0 pt-6 pb-8 glass-panel border-t border-border">
-            <div className="mx-auto w-full max-w-3xl px-page-x">
-              <div className="flex items-center gap-4 rounded-2xl border border-border bg-background/40 backdrop-blur-md px-5 py-3.5 shadow-sm focus-within:border-foreground/25 focus-within:ring-2 focus-within:ring-foreground/10 transition-all min-h-[3.5rem]">
-                <input
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                  placeholder="Paste a headline or describe a news event…"
-                  className="flex-1 bg-transparent text-[15px] text-foreground placeholder:text-muted-foreground focus:outline-none min-h-[2.75rem]"
+          <div className="sticky bottom-0 left-0 right-0 pt-6 pb-8">
+            <div className="w-full px-page-x">
+              <div
+                ref={barContainerRef}
+                className="relative h-[4.5rem] w-full"
+              >
+                <LiquidGlassCanvas
+                  width={barSize.width || 640}
+                  height={barSize.height || 72}
+                  fillShape={false}
+                  preset={LIQUID_GLASS_BAR_PRESET}
+                  className="absolute inset-0 h-full w-full pointer-events-none"
+                  interactive={false}
+                  backgroundTextureUrl={barGradientDataUrl}
+                  fallbackTransparent
                 />
-                <button
-                  onClick={handleSubmit}
-                  disabled={!input.trim() || loading}
-                  className={cn(
-                    "flex items-center justify-center h-11 w-11 rounded-xl transition-all shrink-0",
-                    input.trim() && !loading
-                      ? "bg-foreground text-background hover:opacity-90"
-                      : "bg-muted text-muted-foreground cursor-not-allowed"
-                  )}
-                >
-                  {loading
-                    ? <Loader2 className="h-5 w-5 animate-spin" strokeWidth={1.75} />
-                    : <Send className="h-5 w-5" strokeWidth={1.75} />}
-                </button>
+                <div className="absolute inset-0 flex items-center gap-3 px-4 py-3 bg-transparent pointer-events-auto predict-sticky-input">
+                  <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+                    placeholder="Paste a headline or describe a news event…"
+                    className="flex-1 w-full min-w-0 bg-transparent text-[15px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-0 focus:border-0 border-0 shadow-none min-h-[2.75rem] appearance-none outline-none overflow-hidden text-ellipsis whitespace-nowrap"
+                    style={{ background: 'transparent', border: 'none', boxShadow: 'none' }}
+                  />
+                  <button
+                    onClick={handleSubmit}
+                    disabled={!input.trim() || loading}
+                    className={cn(
+                      "flex shrink-0 items-center justify-center h-10 w-10 rounded-xl transition-all",
+                      input.trim() && !loading
+                        ? "bg-foreground text-background hover:opacity-90"
+                        : "bg-muted text-muted-foreground cursor-not-allowed"
+                    )}
+                  >
+                    {loading
+                      ? <Loader2 className="h-5 w-5 animate-spin" strokeWidth={1.75} />
+                      : <Send className="h-5 w-5" strokeWidth={1.75} />}
+                  </button>
+                </div>
               </div>
               <p className="mt-2 text-[11px] text-muted-foreground text-center">
                 {history.length} prediction{history.length !== 1 ? "s" : ""} this session

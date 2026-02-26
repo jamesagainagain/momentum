@@ -392,7 +392,11 @@ export class MultiPassRenderer {
   private globalUniforms: Record<string, unknown> = {};
 
   constructor(canvas: HTMLCanvasElement, configs: RenderPassConfig[]) {
-    const gl = canvas.getContext("webgl2");
+    const gl = canvas.getContext("webgl2", {
+      alpha: true,
+      premultipliedAlpha: false,
+      preserveDrawingBuffer: false,
+    });
     if (!gl) throw new Error("WebGL 2 not supported");
     const ext = gl.getExtension("EXT_color_buffer_float");
     if (!ext) throw new Error("EXT_color_buffer_float not supported");

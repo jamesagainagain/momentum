@@ -465,5 +465,9 @@ void main() {
     outColor = texture(u_bg, v_uv);
   }
 
+  /* Outside the glass shape: fully transparent so only the pill is visible (no rectangular blob). */
+  if (merged > 0.002) {
+    outColor = vec4(0.0, 0.0, 0.0, 0.0);
+  }
   fragColor = outColor;
 }
