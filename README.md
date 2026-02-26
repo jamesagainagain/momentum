@@ -2,6 +2,32 @@
 
 Analyses social media posts with embeddings (e.g. Gemini) to discover topics, track their evolution over time, and predict direction (down / flat / up) for new events.
 
+## Capabilities
+
+- **Topic discovery** — Cluster post embeddings (HDBSCAN), reduce to 2D (UMAP), and label clusters with TF‑IDF (and optional domain stop-word filtering).
+- **Temporal tracking** — Per-cluster, per-window metrics: volume, volatility, momentum, market share, lifecycle state (emerging / trending / stable / declining / dormant), and anomaly (spike/drop) detection.
+- **Theme activation** — Score clusters against a curated theme lexicon using TF‑IDF (no LLM); produces activation tables used for forecasting and API.
+- **Direction prediction** — Given a new event or headline, predict whether each activated theme will go **down**, **flat**, or **up** in the next period, with confidence and risk bands.
+- **Interactive dashboard & chat** — Web UI (Predict, Trends, Topics, Scenarios) and a News Impact Chat that runs predictions and, when configured, Gemini-based analysis of the result.
+
+## Time period and sampling
+
+- **Input data** — You supply a raw CSV of posts (text, timestamp, author, engagement) and an `embeddings.npy` array (rows aligned to that CSV). The pipeline does not define the time span; it uses whatever period your data covers.
+- **Optional preprocessing (Script 0)** — Deduplicate on exact (text, author), keeping the highest-engagement row per pair. Cap any single author at 5% of total posts (by engagement). Output is a cleaned CSV and indices for slicing embeddings.
+- **Temporal windows** — Default is **monthly** (`1M`). You can run Script 2 with `--window "1W"` (weekly), `"1D"` (daily), or `"3M"` (quarterly). All per-cluster metrics (volume, volatility, momentum, etc.) are computed per time window.
+- **Weekly recency snapshots** — For the API and dashboard, weekly snapshots are built over the **last 12 months** (configurable: `temporal.recency_lookback_months`). Only clusters that pass a **density gate** are included: at least 3 posts per week and at least 50% of weeks in the cluster’s active range must meet that minimum (`recency_min_posts_per_window`, `recency_min_density` in config).
+
+## Models
+
+- **Embeddings** — Not produced by the pipeline. You provide `embeddings.npy` (e.g. from Gemini, another embedder, or your own export). Row order must match the raw (or cleaned) CSV.
+- **Clustering & reduction** — **HDBSCAN** (config: `min_cluster_size`, `min_samples`). Optional **PCA** (e.g. 128 components) before HDBSCAN. **UMAP** (2D, cosine) for visualization. Cluster labels via **class-based TF‑IDF** (and optional LLM semantic rerank; see `llm` in config).
+- **Direction forecast model** — Trained on historical cluster × time-window state (theme scores, volatility, momentum, lags, etc.). Targets are next-window direction (down/flat/up) under an **epsilon band** (config: `target_epsilon`, `target_epsilon_grid`). Training uses **walk-forward cross-validation** over time and optional **probability calibration** and **threshold tuning**.  
+  **Base models** (config: `model_training.models`): Logistic Regression, Random Forest, Extra Trees, Histogram Gradient Boosting; optionally XGBoost and LightGBM if installed.  
+  **Ensembles**: **soft-voting** (average class probabilities) and **stacking** (meta-learner on base-model probabilities). The best of single models, soft-voting, or stacking is saved as `direction_model.pkl`.
+- **LLM (optional)** — For the News Impact Chat, **Gemini** (e.g. `gemini-2.5-flash`) can be used to analyse and explain a prediction. Set `GOOGLE_API_KEY` in `.env` and enable in config (`llm.enabled`, `llm.model`).
+
+---
+
 ## Setup
 
 ```bash
