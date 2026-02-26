@@ -14,7 +14,7 @@ export function ActivityHeatmap() {
 
   return (
     <div className="glass-card px-6 py-6">
-      <h3 className="text-[11px] font-semibold text-foreground uppercase tracking-[0.1em]">Activity Heatmap</h3>
+      <h3 className="text-section-label">Activity Heatmap</h3>
       <p className="mt-1 mb-6 text-[11px] text-muted-foreground">Cluster intensity over time</p>
 
       <div className="space-y-0.5">

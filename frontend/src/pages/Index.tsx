@@ -137,7 +137,7 @@ const Index = () => {
         <div className="glass-card px-6 py-6">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h3 className="text-[11px] font-semibold text-foreground uppercase tracking-[0.1em]">Monthly Trends</h3>
+              <h3 className="text-section-label">Monthly Trends</h3>
               <p className="mt-0.5 text-[11px] text-muted-foreground">
                 {granularity === "weekly"
                   ? `Weekly · last 12 months · ${weeklyClusterIds.size} dense cluster${weeklyClusterIds.size !== 1 ? "s" : ""}`
@@ -235,7 +235,7 @@ const Index = () => {
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           <div className="glass-card px-6 py-6">
-            <h3 className="text-[11px] font-semibold text-foreground uppercase tracking-[0.1em] mb-1">Lifecycle Distribution</h3>
+            <h3 className="text-section-label mb-1">Lifecycle Distribution</h3>
             <p className="text-[10px] text-muted-foreground mb-6" title="Based on recent post volume change">
               Volume trend
             </p>
@@ -260,7 +260,7 @@ const Index = () => {
           </div>
 
           <div className="glass-card px-6 py-6">
-            <h3 className="text-[11px] font-semibold text-foreground uppercase tracking-[0.1em] mb-6">Top Anomalous</h3>
+            <h3 className="text-section-label mb-6">Top Anomalous</h3>
             <div className="space-y-3">
               {topAnomalous.map((c) => (
                 <button
@@ -278,7 +278,7 @@ const Index = () => {
           </div>
 
           <div className="glass-card px-6 py-6">
-            <h3 className="text-[11px] font-semibold text-foreground uppercase tracking-[0.1em] mb-6">Event Log</h3>
+            <h3 className="text-section-label mb-6">Event Log</h3>
             <div className="space-y-4">
               {displayEvents.slice(0, 6).map((e, i) => (
                 <div key={i} className="flex gap-3 items-start">

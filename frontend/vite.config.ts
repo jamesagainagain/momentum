@@ -22,6 +22,7 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@liquid-glass": path.resolve(__dirname, "vendor/liquid-glass-studio/src"),
     },
   },
 }));

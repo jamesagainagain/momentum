@@ -10,7 +10,7 @@ export function EventTimeline() {
     <div className="glass-card px-6 py-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h3 className="text-[11px] font-semibold text-foreground uppercase tracking-[0.1em]">Event Timeline</h3>
+          <h3 className="text-section-label">Event Timeline</h3>
           <p className="mt-1 text-[11px] text-muted-foreground">Engagement · {anomalies.length} anomalies ({">"}2σ)</p>
         </div>
       </div>

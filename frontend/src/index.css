@@ -39,6 +39,9 @@
     --touch-min: 2.75rem;     /* 44px min touch target */
     --input-height: 3.5rem;   /* 56px input height */
 
+    /* Typography — section labels (Predict, Trends, panel titles) */
+    --text-section-label-size: 11px;
+
     --glass-bg: 40 20% 99%;
 
     --sidebar-background: 40 20% 99%;
@@ -122,6 +125,15 @@
 
   .font-display {
     font-family: 'Poppins', system-ui, sans-serif;
+  }
+
+  /* Section labels: TopBar and panel titles (Predict, Trends, New Scenario, AI Analysis, etc.) */
+  .text-section-label {
+    font-size: var(--text-section-label-size, 11px);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: hsl(var(--muted-foreground));
   }
 
   .glass-card {

@@ -143,7 +143,7 @@ const ScenarioPanel = () => {
       <div className="space-y-8 max-w-5xl">
         {/* Input */}
         <div className="glass-card px-6 py-6">
-          <h3 className="text-[11px] font-semibold text-foreground uppercase tracking-[0.1em] mb-5">New Scenario</h3>
+          <h3 className="text-section-label mb-5">New Scenario</h3>
           <div className="flex items-center gap-3">
             <input
               value={input}
@@ -189,7 +189,7 @@ const ScenarioPanel = () => {
         {/* Comparison chart */}
         {comparisonData.length > 0 && (
           <div className="glass-card px-6 py-6">
-            <h3 className="text-[11px] font-semibold text-foreground uppercase tracking-[0.1em] mb-3">
+            <h3 className="text-section-label mb-3">
               Scenario Comparison
             </h3>
             <p className="text-[10px] text-muted-foreground mb-4">
@@ -282,7 +282,7 @@ const ScenarioPanel = () => {
         {/* Saved */}
         {saved.length > 0 && (
           <div className="glass-card px-6 py-6">
-            <h3 className="text-[11px] font-semibold text-foreground uppercase tracking-[0.1em] mb-5">
+            <h3 className="text-section-label mb-5">
               Saved Scenarios ({saved.length})
             </h3>
             <div className="divide-y divide-border">

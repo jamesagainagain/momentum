@@ -12,7 +12,7 @@ const statusStyles: Record<string, string> = {
 export function LifecycleTracker() {
   return (
     <div className="glass-card px-6 py-6">
-      <h3 className="text-[11px] font-semibold text-foreground uppercase tracking-[0.1em]">Lifecycle</h3>
+      <h3 className="text-section-label">Lifecycle</h3>
       <p className="mt-1 mb-6 text-[11px] text-muted-foreground">Cluster status ranking</p>
 
       <div className="grid grid-cols-[1fr_56px_56px_72px_64px] gap-2 px-2 pb-3 text-[9px] uppercase tracking-widest text-muted-foreground border-b border-border">

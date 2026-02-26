@@ -98,7 +98,7 @@ const ClusterExplorer = () => {
           <div className="glass-card px-6 py-6">
             <div className="flex items-center justify-between mb-5">
               <div>
-                <h3 className="text-[11px] font-semibold text-foreground uppercase tracking-[0.1em]">Comparison</h3>
+                <h3 className="text-section-label">Comparison</h3>
                 <p className="mt-1 text-[11px] text-muted-foreground">
                   {compareIds.map((id) => displayClusters.find((c) => c.id === id)?.cluster_label).join(" vs ")}
                 </p>
@@ -126,7 +126,7 @@ const ClusterExplorer = () => {
           <div className="glass-card px-6 py-6">
             <div className="flex items-center justify-between mb-5">
               <div>
-                <h3 className="text-[11px] font-semibold text-foreground uppercase tracking-[0.1em]">Timeline</h3>
+                <h3 className="text-section-label">Timeline</h3>
                 <p className="mt-1 text-[11px] text-muted-foreground">
                   {displayClusters.find((c) => c.id === drillCluster)?.cluster_label}
                 </p>
@@ -148,7 +148,7 @@ const ClusterExplorer = () => {
 
         <div className="glass-card overflow-hidden">
           <div className="px-6 py-5 border-b border-border">
-            <h3 className="text-[11px] font-semibold text-foreground uppercase tracking-[0.1em]">All Clusters</h3>
+            <h3 className="text-section-label">All Clusters</h3>
             <p className="mt-1 text-[11px] text-muted-foreground">
               {displayClusters.length} clusters{useReal ? " (live)" : ""} · click row to drill down · checkbox to compare (max 3)
             </p>

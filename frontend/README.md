@@ -60,6 +60,18 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## Liquid glass (Predict input)
+
+The Predict page sticky input uses the [liquid-glass-studio](https://github.com/iyinchao/liquid-glass-studio) effect (shaders and WebGL utils), sourced from a **git submodule** at `frontend/vendor/liquid-glass-studio`.
+
+- **After cloning the repo** (from the repo root), init the submodule so the vendor folder is populated:  
+  `git submodule update --init frontend/vendor/liquid-glass-studio`  
+  (Without this, the vendor folder is empty and the glass effect will not work.)
+- **To update** to the latest upstream:  
+  `git submodule update --remote frontend/vendor/liquid-glass-studio`
+
+Our app imports shaders and utils via the `@liquid-glass` Vite alias; preset values and the React wrapper live in `src/lib/liquid-glass/preset.ts` and `src/components/LiquidGlassCanvas.tsx`.
+
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.

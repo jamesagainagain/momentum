@@ -437,7 +437,7 @@ const NewsChatPage = () => {
                     className={cn(
                       "flex items-center justify-center h-11 w-11 rounded-xl transition-all shrink-0",
                       input.trim()
-                        ? "bg-foreground text-background hover:opacity-90"
+                        ? "bg-primary text-primary-foreground hover:opacity-90"
                         : "bg-muted text-muted-foreground cursor-not-allowed"
                     )}
                   >
@@ -500,18 +500,21 @@ const NewsChatPage = () => {
                 ref={barContainerRef}
                 className="relative h-[4.5rem] w-full"
               >
-                <LiquidGlassCanvas
-                  width={barSize.width || 640}
-                  height={barSize.height || 72}
-                  fillShape={false}
-                  preset={LIQUID_GLASS_BAR_PRESET}
-                  shapeWidthRatio={0.98}
-                  shapeHeightRatio={0.92}
-                  className="absolute inset-0 h-full w-full pointer-events-none"
-                  interactive={false}
-                  backgroundTextureUrl={barGradientDataUrl}
-                  fallbackTransparent
-                />
+                {/* Pill dimensions and preset aligned with design-spec-predict-input.md and liquid-glass-studio. Canvas mounts only when size is known to avoid first-frame size jump. */}
+                {barSize.width > 0 && (
+                  <LiquidGlassCanvas
+                    width={barSize.width}
+                    height={barSize.height || 72}
+                    fillShape={false}
+                    preset={LIQUID_GLASS_BAR_PRESET}
+                    shapeWidthRatio={0.85}
+                    shapeHeightRatio={0.7}
+                    className="absolute inset-0 h-full w-full pointer-events-none"
+                    interactive={false}
+                    backgroundTextureUrl={barGradientDataUrl}
+                    fallbackTransparent
+                  />
+                )}
                 <div className="absolute inset-0 flex items-center gap-3 px-4 py-3 bg-transparent pointer-events-auto predict-sticky-input">
                   <input
                     type="text"
@@ -528,7 +531,7 @@ const NewsChatPage = () => {
                     className={cn(
                       "flex shrink-0 items-center justify-center h-10 w-10 rounded-xl transition-all",
                       input.trim() && !loading
-                        ? "bg-foreground text-background hover:opacity-90"
+                        ? "bg-primary text-primary-foreground hover:opacity-90"
                         : "bg-muted text-muted-foreground cursor-not-allowed"
                     )}
                   >

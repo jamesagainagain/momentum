@@ -26,7 +26,7 @@ export function AIInsightPanel() {
     <div className="glass-card px-6 py-6">
       <div className="mb-6 flex items-center gap-2.5">
         <Sparkles className="h-[14px] w-[14px] text-muted-foreground" strokeWidth={1.75} />
-        <h3 className="text-[11px] font-semibold text-foreground uppercase tracking-[0.1em]">AI Analysis</h3>
+        <h3 className="text-section-label">AI Analysis</h3>
       </div>
 
       <div className="divide-y divide-border">

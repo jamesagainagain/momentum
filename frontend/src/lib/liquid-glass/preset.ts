@@ -31,7 +31,7 @@ export interface LiquidGlassPresetControls {
   step?: number;
 }
 
-/** Preset from liquid-glass-studio export 2026-02-25T23:58:41 — exact values from repo, no custom aesthetics. */
+/** Preset for Predict sticky input bar. Aligned with design-spec-predict-input.md and liquid-glass-studio: pill 85%×70%, capsule radius 50%, visible blur for refraction/Fresnel. */
 export const LIQUID_GLASS_BAR_PRESET: LiquidGlassPresetControls = {
   refThickness: 20,
   refFactor: 1.4,
@@ -45,15 +45,16 @@ export const LIQUID_GLASS_BAR_PRESET: LiquidGlassPresetControls = {
   glareConvergence: 50,
   glareOppositeFactor: 80,
   glareAngle: -45,
-  blurRadius: 1,
+  blurRadius: 20,
   blurEdge: true,
-  tint: { r: 255, g: 255, b: 255, a: 0 },
+  /* Warm off-white tint (Anthropic-style) so the glass matches --background/--glass-bg; alpha for input-field legibility. */
+  tint: { r: 252, g: 251, b: 246, a: 28 },
   shadowExpand: 25,
   shadowFactor: 15,
   shadowPosition: { x: 0, y: -10 },
   shapeWidth: 640,
   shapeHeight: 72,
-  shapeRadius: 80,
+  shapeRadius: 50,
   shapeRoundness: 5,
   mergeRate: 0.08,
   showShape1: false,

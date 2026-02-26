@@ -1,14 +1,14 @@
 import { useRef, useEffect, useCallback, useState } from "react";
 import { cn } from "@/lib/utils";
-import { MultiPassRenderer, loadTextureFromURL } from "@/lib/liquid-glass/GLUtils";
-import { computeGaussianKernelByRadius } from "@/lib/liquid-glass/utils";
+import { MultiPassRenderer, loadTextureFromURL } from "@liquid-glass/utils/GLUtils";
+import { computeGaussianKernelByRadius } from "@liquid-glass/utils/index";
 import type { LiquidGlassPresetControls } from "@/lib/liquid-glass/preset";
 
-import VertexShader from "@/lib/liquid-glass/shaders/vertex.glsl?raw";
-import FragmentBgShader from "@/lib/liquid-glass/shaders/fragment-bg.glsl?raw";
-import FragmentBgVblurShader from "@/lib/liquid-glass/shaders/fragment-bg-vblur.glsl?raw";
-import FragmentBgHblurShader from "@/lib/liquid-glass/shaders/fragment-bg-hblur.glsl?raw";
-import FragmentMainShader from "@/lib/liquid-glass/shaders/fragment-main.glsl?raw";
+import VertexShader from "@liquid-glass/shaders/vertex.glsl?raw";
+import FragmentBgShader from "@liquid-glass/shaders/fragment-bg.glsl?raw";
+import FragmentBgVblurShader from "@liquid-glass/shaders/fragment-bg-vblur.glsl?raw";
+import FragmentBgHblurShader from "@liquid-glass/shaders/fragment-bg-hblur.glsl?raw";
+import FragmentMainShader from "@liquid-glass/shaders/fragment-main.glsl?raw";
 
 export interface LiquidGlassCanvasProps {
   width: number;

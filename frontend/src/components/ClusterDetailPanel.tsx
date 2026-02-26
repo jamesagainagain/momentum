@@ -29,7 +29,7 @@ export function ClusterDetailPanel({ cluster, onClose }: ClusterDetailPanelProps
   return (
     <div className="fixed inset-y-0 right-0 z-50 w-80 border-l border-border bg-card shadow-lg animate-slide-in-right">
       <div className="flex h-14 items-center justify-between border-b border-border px-6">
-        <h3 className="text-[11px] font-semibold text-foreground uppercase tracking-[0.1em]">Cluster Detail</h3>
+        <h3 className="text-section-label">Cluster Detail</h3>
         <button onClick={onClose} className="p-1.5 text-muted-foreground hover:text-foreground transition-colors">
           <X className="h-[14px] w-[14px]" strokeWidth={1.75} />
         </button>
